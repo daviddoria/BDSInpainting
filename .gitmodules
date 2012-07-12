@@ -1,0 +1,3 @@
+[submodule "PatchMatch"]
+	path = PatchMatch
+	url = https://github.com/daviddoria/PatchMatch.git
