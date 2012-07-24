@@ -7,15 +7,25 @@ SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=gnu++0x")
 include_directories(/media/portable/src/Eigen)
 
 # VTK
-FIND_PACKAGE(ITK REQUIRED ITKCommon ITKIOImageBase
-ITKImageIntensity ITKImageFeature ITKMathematicalMorphology ITKBinaryMathematicalMorphology
-ITKDeprecated)
+FIND_PACKAGE(ITK REQUIRED ITKCommon ITKIOImageBase ITKDistanceMap
+ITKImageIntensity ITKImageFeature ITKMathematicalMorphology ITKBinaryMathematicalMorphology)
 INCLUDE(${USE_ITK_FILE})
 
-add_subdirectory(PatchMatch)
+if(NOT TARGET PatchMatch)
+  add_subdirectory(PatchMatch)
+  include_directories(${PatchMatch_includes})
+endif()
 
+# Allow super-projects to use all of the includes we can use here.
+if(NOT ${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR})
+  set(BDSInpainting_includes ${PatchMatch_includes}
+      ${CMAKE_CURRENT_SOURCE_DIR} PARENT_SCOPE)
+endif()
+
+# Create a library
 add_library(BDSInpainting BDSInpainting.cpp)
-target_link_libraries(BDSInpainting PatchMatch)
+target_link_libraries(BDSInpainting Mask PatchComparison)
 
+# Create an executable
 ADD_EXECUTABLE(BDSInpaintingDemo BDSInpaintingDemo.cpp)
 TARGET_LINK_LIBRARIES(BDSInpaintingDemo BDSInpainting)

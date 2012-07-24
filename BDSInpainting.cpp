@@ -19,18 +19,16 @@
 #include "BDSInpainting.h"
 
 // Submodules
-#include "PatchMatch/Mask/ITKHelpers/ITKHelpers.h"
-#include "PatchMatch/Mask/MaskOperations.h"
+#include "ITKHelpers/ITKHelpers.h"
+#include "Mask/MaskOperations.h"
 #include "PatchMatch/PatchMatch.h"
+#include "PatchComparison/SSD.h"
 
 // ITK
 #include "itkImageRegionReverseIterator.h"
 
 // STL
 #include <ctime>
-
-// Custom
-
 
 BDSInpainting::BDSInpainting() : ResolutionLevels(3), Iterations(5), PatchRadius(7), PatchMatchIterations(3), DownsampleFactor(.5)
 {
@@ -157,20 +155,19 @@ void BDSInpainting::Compute(ImageType* const image, Mask* const mask, ImageType*
   std::cout << "Computing BDS on resolution " << fullRegion.GetSize() << std::endl;
 
   // Only compute the projection matrix once per scale
-  PatchMatch patchMatch;
+  PatchMatch<ImageType> patchMatch;
   patchMatch.SetPatchRadius(this->PatchRadius);
   patchMatch.SetImage(currentImage);
-
-  //patchMatch.SetDistanceType(PatchMatch::PIXELWISE);
-
-  patchMatch.SetDistanceType(PatchMatch::PCA);
-  patchMatch.ComputeProjectionMatrix();
+  SSD<ImageType> ssdFunctor;
+  ssdFunctor.SetImage(currentImage);
+  patchMatch.SetPatchDistanceFunctor(&ssdFunctor);
 
   for(unsigned int iteration = 0; iteration < this->Iterations; ++iteration)
   {
     std::cout << "BDSInpainting Iteration " << iteration << std::endl;
 
-    // Set the image here even though it was also set outside the loop, because we want to do this at every iteration.
+    // Set the image here even though it was also set outside the loop,
+    // because we want to do this at every iteration.
     patchMatch.SetImage(currentImage);
     patchMatch.SetSourceMask(mask);
     patchMatch.SetTargetMask(targetMask);
@@ -198,7 +195,7 @@ void BDSInpainting::Compute(ImageType* const image, Mask* const mask, ImageType*
       }
     }
 
-    PatchMatch::PMImageType* nnField = patchMatch.GetOutput();
+    PatchMatch<ImageType>::PMImageType* nnField = patchMatch.GetOutput();
 
     // The contribution of each pixel q to the error term (d_cohere) = 1/N_T \sum_{i=1}^m (S(p_i) - T(q))^2
     // To find the best color T(q) (iterative update rule), differentiate with respect to T(q),
