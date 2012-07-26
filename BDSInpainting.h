@@ -30,21 +30,20 @@
 
 /** This class uses PatchMatch to compute the nearest neighbor field, and then the
  *  coherence term from Bidirectional Similarity to perform inpainting. */
+template <typename TImage>
 class BDSInpainting
 {
 public:
 
   BDSInpainting();
 
-  typedef itk::Image<itk::CovariantVector<float, 3>, 2> ImageType;
-
   /** The main driver. */
   void Compute();
 
   /** This function does the actual work, and is called from Compute() at multiple resolutions. */
-  void Compute(ImageType* const image, Mask* const mask, ImageType* const output);
+  void Compute(TImage* const image, Mask* const mask, TImage* const output);
 
-  ImageType* GetOutput();
+  TImage* GetOutput();
 
   void SetIterations(const unsigned int iterations);
 
@@ -56,7 +55,7 @@ public:
 
   void SetDownsampleFactor(const float downsampleFactor);
 
-  void SetImage(ImageType* const image);
+  void SetImage(TImage* const image);
 
   void SetMask(Mask* const mask);
 
@@ -68,11 +67,13 @@ private:
   unsigned int PatchMatchIterations;
   float DownsampleFactor;
 
-  ImageType::Pointer Output;
+  typename TImage::Pointer Output;
 
-  ImageType::Pointer Image;
+  typename TImage::Pointer Image;
 
   Mask::Pointer MaskImage;
 };
+
+#include "BDSInpainting.hpp"
 
 #endif

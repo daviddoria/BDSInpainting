@@ -29,9 +29,9 @@ if(NOT ${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR})
 endif()
 
 # Create a library
-add_library(BDSInpainting BDSInpainting.cpp)
-target_link_libraries(BDSInpainting Mask PatchComparison)
+add_custom_target(BDSInpainting BDSInpainting.hpp)
+#target_link_libraries(BDSInpainting Mask PatchComparison)
 
 # Create an executable
 ADD_EXECUTABLE(BDSInpaintingDemo BDSInpaintingDemo.cpp)
-TARGET_LINK_LIBRARIES(BDSInpaintingDemo BDSInpainting)
+TARGET_LINK_LIBRARIES(BDSInpaintingDemo Mask)

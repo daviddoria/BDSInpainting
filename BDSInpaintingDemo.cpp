@@ -26,8 +26,8 @@
 #include "itkCovariantVector.h"
 
 // Submodules
-#include "PatchMatch/Mask/Mask.h"
-#include "PatchMatch/Mask/ITKHelpers/ITKHelpers.h"
+#include "Mask/Mask.h"
+#include "ITKHelpers/ITKHelpers.h"
 
 #include "BDSInpainting.h"
 
@@ -59,7 +59,7 @@ int main(int argc, char*argv[])
   mask->SetValidValue(255);
   mask->Read(maskFilename);
 
-  BDSInpainting bdsInpainting;
+  BDSInpainting<ImageType> bdsInpainting;
   bdsInpainting.SetPatchRadius(7);
   bdsInpainting.SetImage(imageReader->GetOutput());
   bdsInpainting.SetMask(mask);
