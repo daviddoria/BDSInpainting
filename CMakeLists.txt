@@ -11,9 +11,15 @@ FIND_PACKAGE(ITK REQUIRED ITKCommon ITKIOImageBase ITKDistanceMap
 ITKImageIntensity ITKImageFeature ITKMathematicalMorphology ITKBinaryMathematicalMorphology)
 INCLUDE(${USE_ITK_FILE})
 
+# Submodules
 if(NOT TARGET PatchMatch)
   add_subdirectory(PatchMatch)
   include_directories(${PatchMatch_includes})
+endif()
+
+if(NOT TARGET PoissonEditing)
+  add_subdirectory(PoissonEditing)
+  include_directories(${PoissonEditing_includes})
 endif()
 
 # Allow super-projects to use all of the includes we can use here.

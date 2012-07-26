@@ -1,3 +1,6 @@
 [submodule "PatchMatch"]
 	path = PatchMatch
 	url = https://github.com/daviddoria/PatchMatch.git
+[submodule "PoissonEditing"]
+	path = PoissonEditing
+	url = https://github.com/daviddoria/PoissonEditing.git
