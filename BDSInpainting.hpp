@@ -136,15 +136,6 @@ template <typename TImage>
 void BDSInpainting<TImage>::Compute(TImage* const image, Mask* const mask, TImage* const output)
 {
   ITKHelpers::WriteRGBImage(image, "ComputeInput.png");
-  // Smoothly fill the hole
-//   Image image(imageIn.width, imageIn.height, 1, imageIn.channels);
-//   image.CopyData(Inpaint::apply(imageIn, mask));
-
-  // For inpainting, the target mask for PatchMatch is the entire image
-  Mask::Pointer targetMask = Mask::New();
-  targetMask->SetRegions(mask->GetLargestPossibleRegion());
-  targetMask->Allocate();
-  ITKHelpers::SetImageToConstant(targetMask.GetPointer(), targetMask->GetValidValue());
 
   // Initialize the output with the input
   ITKHelpers::DeepCopy(image, output);
@@ -153,14 +144,17 @@ void BDSInpainting<TImage>::Compute(TImage* const image, Mask* const mask, TImag
   typename TImage::Pointer currentImage = TImage::New();
   ITKHelpers::DeepCopy(image, currentImage.GetPointer());
 
-  typename TImage::PixelType zeroPixel;
-  zeroPixel.Fill(0.0f);
+  // We must get a dummy pixel from the image and then fill it with zero to make sure the number
+  // of components of the pixel is correct.
+  itk::Index<2> zeroIndex = {{0,0}};
+  typename TImage::PixelType zeroPixel = image->GetPixel(zeroIndex);
+  zeroPixel.Fill(0);
 
   itk::ImageRegion<2> fullRegion = image->GetLargestPossibleRegion();
 
   std::cout << "Computing BDS on resolution " << fullRegion.GetSize() << std::endl;
 
-  // Only compute the projection matrix once per scale
+  // Setup the PatchMatch object
   PatchMatch<TImage> patchMatch;
   patchMatch.SetPatchRadius(this->PatchRadius);
   patchMatch.SetImage(currentImage);
@@ -176,7 +170,7 @@ void BDSInpainting<TImage>::Compute(TImage* const image, Mask* const mask, TImag
     // because we want to do this at every iteration.
     patchMatch.SetImage(currentImage);
     patchMatch.SetSourceMask(mask);
-    patchMatch.SetTargetMask(targetMask);
+    patchMatch.SetTargetMask(mask);
     patchMatch.SetIterations(this->PatchMatchIterations);
 
     try
@@ -208,8 +202,9 @@ void BDSInpainting<TImage>::Compute(TImage* const image, Mask* const mask, TImag
     // set to 0, and solve for T(q):
     // T(q) = \frac{1}{m} \sum_{i=1}^m S(p_i)
 
-    typename TImage::Pointer updateImage = TImage::New(); // We don't want to change pixels directly on the
+    // We don't want to change pixels directly on the
     // output image during the iteration, but rather compute them all and then update them all simultaneously.
+    typename TImage::Pointer updateImage = TImage::New();
     ITKHelpers::DeepCopy(currentImage.GetPointer(), updateImage.GetPointer());
 
     // Loop over the whole image (patch centers)
@@ -304,7 +299,7 @@ void BDSInpainting<TImage>::Compute(TImage* const image, Mask* const mask, TImag
 template <typename TImage>
 TImage* BDSInpainting<TImage>::GetOutput()
 {
-  return Output;
+  return this->Output;
 }
 
 template <typename TImage>
