@@ -48,18 +48,15 @@ void BDSInpainting<TImage>::Compute()
 {
   // Poisson fill the input image
   typedef PoissonEditing<typename TypeTraits<typename TImage::PixelType>::ComponentType> PoissonEditingType;
-  std::vector<typename PoissonEditingType::GuidanceFieldType*> guidanceFields;
+
   typename PoissonEditingType::GuidanceFieldType::Pointer zeroGuidanceField = PoissonEditingType::GuidanceFieldType::New();
   zeroGuidanceField->SetRegions(this->Image->GetLargestPossibleRegion());
   typename PoissonEditingType::GuidanceFieldType::PixelType zeroPixel;
   zeroPixel.Fill(0);
   ITKHelpers::SetImageToConstant(zeroGuidanceField.GetPointer(), zeroPixel);
-  for(unsigned int i = 0; i < this->Image->GetNumberOfComponentsPerPixel(); ++i)
-  {
-    guidanceFields.push_back(zeroGuidanceField);
-  }
-  PoissonEditingType::FillAllChannels(this->Image.GetPointer(), this->TargetMask,
-                         guidanceFields, this->Image.GetPointer());
+
+  PoissonEditingType::FillImage(this->Image.GetPointer(), this->TargetMask,
+                                zeroGuidanceField.GetPointer(), this->Image.GetPointer());
 
   // The finest scale masks and image are simply the user inputs.
   Mask::Pointer level0sourceMask = Mask::New();

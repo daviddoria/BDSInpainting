@@ -34,4 +34,4 @@ add_custom_target(BDSInpainting BDSInpainting.hpp)
 
 # Create an executable
 ADD_EXECUTABLE(BDSInpaintingDemo BDSInpaintingDemo.cpp)
-TARGET_LINK_LIBRARIES(BDSInpaintingDemo Mask)
+TARGET_LINK_LIBRARIES(BDSInpaintingDemo ${PoissonEditing_libraries})
