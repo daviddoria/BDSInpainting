@@ -26,6 +26,7 @@
 #include "Mask/MaskOperations.h"
 #include "PatchMatch/PatchMatch.h"
 #include "PatchComparison/SSD.h"
+#include "PoissonEditing/PoissonEditing.h"
 
 // ITK
 #include "itkImageRegionReverseIterator.h"
@@ -34,7 +35,7 @@
 #include <ctime>
 
 template <typename TImage>
-BDSInpainting<TImage>::BDSInpainting() : ResolutionLevels(3), Iterations(5), PatchRadius(7), PatchMatchIterations(3), DownsampleFactor(.5)
+BDSInpainting<TImage>::BDSInpainting() : ResolutionLevels(3), Iterations(5), PatchRadius(7), DownsampleFactor(.5)
 {
   this->Output = TImage::New();
   this->Image = TImage::New();
@@ -45,6 +46,21 @@ BDSInpainting<TImage>::BDSInpainting() : ResolutionLevels(3), Iterations(5), Pat
 template <typename TImage>
 void BDSInpainting<TImage>::Compute()
 {
+  // Poisson fill the input image
+  typedef PoissonEditing<typename TypeTraits<typename TImage::PixelType>::ComponentType> PoissonEditingType;
+  std::vector<typename PoissonEditingType::GuidanceFieldType*> guidanceFields;
+  typename PoissonEditingType::GuidanceFieldType::Pointer zeroGuidanceField = PoissonEditingType::GuidanceFieldType::New();
+  zeroGuidanceField->SetRegions(this->Image->GetLargestPossibleRegion());
+  typename PoissonEditingType::GuidanceFieldType::PixelType zeroPixel;
+  zeroPixel.Fill(0);
+  ITKHelpers::SetImageToConstant(zeroGuidanceField.GetPointer(), zeroPixel);
+  for(unsigned int i = 0; i < this->Image->GetNumberOfComponentsPerPixel(); ++i)
+  {
+    guidanceFields.push_back(zeroGuidanceField);
+  }
+  PoissonEditingType::FillAllChannels(this->Image.GetPointer(), this->TargetMask,
+                         guidanceFields, this->Image.GetPointer());
+
   // The finest scale masks and image are simply the user inputs.
   Mask::Pointer level0sourceMask = Mask::New();
   level0sourceMask->DeepCopyFrom(this->SourceMask);
@@ -170,36 +186,26 @@ void BDSInpainting<TImage>::Compute(TImage* const image, Mask* const sourceMask,
 
   std::cout << "Computing BDS on resolution " << fullRegion.GetSize() << std::endl;
 
-  // Setup the PatchMatch object
-  PatchMatch<TImage> patchMatch;
-  patchMatch.SetPatchRadius(this->PatchRadius);
-  patchMatch.SetImage(currentImage);
-  SSD<TImage> ssdFunctor;
-  ssdFunctor.SetImage(currentImage);
-  patchMatch.SetPatchDistanceFunctor(&ssdFunctor);
-
   for(unsigned int iteration = 0; iteration < this->Iterations; ++iteration)
   {
     std::cout << "BDSInpainting Iteration " << iteration << std::endl;
 
-    // Set the image here even though it was also set outside the loop,
-    // because we want to do this at every iteration.
-    patchMatch.SetImage(currentImage);
-    patchMatch.SetSourceMask(sourceMask);
-    patchMatch.SetTargetMask(targetMask);
-    patchMatch.SetIterations(this->PatchMatchIterations);
+    // Give the PatchMatch functor the data
+    this->PatchMatchFunctor.SetImage(currentImage);
+    this->PatchMatchFunctor.SetSourceMask(sourceMask);
+    this->PatchMatchFunctor.SetTargetMask(targetMask);
 
     try
     {
       if(iteration == 0)
       {
-        patchMatch.Compute(NULL);
+        this->PatchMatchFunctor.Compute(NULL);
       }
       else
       {
         // For now don't initialize with the previous NN field - though this might work and be a huge speed up.
-        patchMatch.Compute(NULL);
-        //patchMatch.Compute(init);
+        this->PatchMatchFunctor.Compute(NULL);
+        //this->PatchMatchFunctor.Compute(init);
       }
     }
     catch (std::runtime_error &e)
@@ -208,7 +214,7 @@ void BDSInpainting<TImage>::Compute(TImage* const image, Mask* const sourceMask,
       return;
     }
 
-    typename PatchMatch<TImage>::PMImageType* nnField = patchMatch.GetOutput();
+    typename PatchMatch<TImage>::PMImageType* nnField = this->PatchMatchFunctor.GetOutput();
 
     // Update the target pixels
     typename TImage::Pointer updatedImage = TImage::New();
@@ -274,9 +280,9 @@ void BDSInpainting<TImage>::SetResolutionLevels(const unsigned int resolutionLev
 }
 
 template <typename TImage>
-void BDSInpainting<TImage>::SetPatchMatchIterations(const unsigned int patchMatchIterations)
+void BDSInpainting<TImage>::SetPatchMatchFunctor(const PatchMatch<TImage>& patchMatchFunctor)
 {
-  this->PatchMatchIterations = patchMatchIterations;
+  this->PatchMatchFunctor = patchMatchFunctor;
 }
 
 template <typename TImage>

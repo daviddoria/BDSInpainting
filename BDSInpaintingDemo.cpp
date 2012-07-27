@@ -28,52 +28,81 @@
 // Submodules
 #include "Mask/Mask.h"
 #include "ITKHelpers/ITKHelpers.h"
+#include "PatchComparison/SSD.h"
 
 #include "BDSInpainting.h"
 
-typedef itk::Image<itk::CovariantVector<float, 3>, 2> ImageType;
-
 int main(int argc, char*argv[])
 {
-  if(argc < 4)
+  // Parse the input
+  if(argc < 6)
   {
-    std::cerr << "Required arguments: image mask output" << std::endl;
+    std::cerr << "Required arguments: image sourceMask.mask targetMask.mask patchRadius output" << std::endl;
     return EXIT_FAILURE;
   }
 
-  std::string imageFilename = argv[1];
-  std::string maskFilename = argv[2];
-  std::string outputFilename = argv[3];
+  std::stringstream ss;
+  for(int i = 1; i < argc; ++i)
+  {
+    ss << argv[i] << " ";
+  }
 
-  std::cout << "imageFilename: " << imageFilename << std::endl;
-  std::cout << "maskFilename: " << maskFilename << std::endl;
-  std::cout << "outputFilename: " << outputFilename << std::endl;
+  std::string imageFilename;
+  std::string sourceMaskFilename;
+  std::string targetMaskFilename;
+  unsigned int patchRadius;
+  std::string outputFilename;
 
+  ss >> imageFilename >> sourceMaskFilename >> targetMaskFilename >> patchRadius >> outputFilename;
+
+  // Output the parsed values
+  std::cout << "imageFilename: " << imageFilename << std::endl
+            << "sourceMaskFilename: " << sourceMaskFilename << std::endl
+            << "targetMaskFilename: " << targetMaskFilename << std::endl
+            << "patchRadius: " << patchRadius << std::endl
+            << "outputFilename: " << outputFilename << std::endl;
+
+  typedef itk::Image<itk::CovariantVector<unsigned char, 3>, 2> ImageType;
+
+  // Read the image and the masks
   typedef itk::ImageFileReader<ImageType> ImageReaderType;
   ImageReaderType::Pointer imageReader = ImageReaderType::New();
   imageReader->SetFileName(imageFilename);
   imageReader->Update();
 
-  Mask::Pointer mask = Mask::New();
-  mask->SetHoleValue(0);
-  mask->SetValidValue(255);
-  mask->Read(maskFilename);
+  Mask::Pointer sourceMask = Mask::New();
+  sourceMask->Read(sourceMaskFilename);
+
+  Mask::Pointer targetMask = Mask::New();
+  targetMask->Read(targetMaskFilename);
+
+  // Setup the patch distance functor
+  SSD<ImageType> ssdFunctor;
+  ssdFunctor.SetImage(imageReader->GetOutput());
+
+  // Setup the PatchMatch functor
+  PatchMatch<ImageType> patchMatchFunctor;
+  patchMatchFunctor.SetPatchRadius(patchRadius);
+  //patchMatchFunctor.SetImage(imageReader->GetOutput());
+  patchMatchFunctor.SetPatchDistanceFunctor(&ssdFunctor);
+  patchMatchFunctor.SetIterations(3);
+  patchMatchFunctor.SetInitializationStrategy(PatchMatch<ImageType>::RANDOM);
 
   // Here, the source match and target match are the same, specifying the classicial "use pixels outside the hole to fill the pixels inside the hole".
   // In an interactive algorith, the user could manually specify a source region, improving the resulting inpainting.
   BDSInpainting<ImageType> bdsInpainting;
-  bdsInpainting.SetPatchRadius(7);
+  bdsInpainting.SetPatchRadius(patchRadius);
   bdsInpainting.SetImage(imageReader->GetOutput());
-  bdsInpainting.SetSourceMask(mask);
-  bdsInpainting.SetTargetMask(mask);
-  bdsInpainting.SetResolutionLevels(1);
+  bdsInpainting.SetSourceMask(sourceMask);
+  bdsInpainting.SetTargetMask(targetMask);
+  bdsInpainting.SetResolutionLevels(1); // This means simply fill the image at the original resolution without any downsampling
   //bdsInpainting.SetResolutionLevels(2);
 
   bdsInpainting.SetIterations(4);
 
   bdsInpainting.SetDownsampleFactor(.5);
 
-  bdsInpainting.SetPatchMatchIterations(3);
+  bdsInpainting.SetPatchMatchFunctor(patchMatchFunctor);
   bdsInpainting.Compute();
 
   ITKHelpers::WriteRGBImage(bdsInpainting.GetOutput(), outputFilename);

@@ -57,8 +57,8 @@ public:
   /** Set the number of resolution levels to use. */
   void SetResolutionLevels(const unsigned int resolutionLevels);
 
-  /** Set the number of PatchMatch iterations to run. */
-  void SetPatchMatchIterations(const unsigned int patchMatchIterations);
+  /** Set the PatchMatch functor to use. */
+  void SetPatchMatchFunctor(const PatchMatch<TImage>& patchMatchFunctor);
 
   /** Set the amount to downsample the image to construct the different resolutions. */
   void SetDownsampleFactor(const float downsampleFactor);
@@ -83,8 +83,8 @@ private:
   /** The radius of the patches to use for inpainting. */
   unsigned int PatchRadius;
 
-  /** The number of iterations of PatchMatch to run at each iteration. */
-  unsigned int PatchMatchIterations;
+  /** The PatchMatch functor to use. */
+  PatchMatch<TImage> PatchMatchFunctor;
 
   /** How much to downsample the image at each level. */
   float DownsampleFactor;
