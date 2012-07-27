@@ -70,9 +70,9 @@ int main(int argc, char*argv[])
   //bdsInpainting.SetResolutionLevels(2);
 
   bdsInpainting.SetIterations(4);
-  
+
   bdsInpainting.SetDownsampleFactor(.5);
-  
+
   bdsInpainting.SetPatchMatchIterations(3);
   bdsInpainting.Compute();
 

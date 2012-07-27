@@ -45,6 +45,7 @@ BDSInpainting<TImage>::BDSInpainting() : ResolutionLevels(3), Iterations(5), Pat
 template <typename TImage>
 void BDSInpainting<TImage>::Compute()
 {
+  // The finest scale masks and image are simply the user inputs.
   Mask::Pointer level0sourceMask = Mask::New();
   level0sourceMask->DeepCopyFrom(this->SourceMask);
 
@@ -54,8 +55,6 @@ void BDSInpainting<TImage>::Compute()
   typename TImage::Pointer level0Image = TImage::New();
   ITKHelpers::DeepCopy(this->Image.GetPointer(), level0Image.GetPointer());
 
-  // Cannot do this! The same image is added as each element of the vector because New() is only evaluated once!
-  // std::vector<TImage::Pointer> imageLevels(this->ResolutionLevels, TImage::New());
   std::vector<typename TImage::Pointer> imageLevels(this->ResolutionLevels);
   std::vector<Mask::Pointer> sourceMaskLevels(this->ResolutionLevels);
   std::vector<Mask::Pointer> targetMaskLevels(this->ResolutionLevels);
@@ -68,6 +67,7 @@ void BDSInpainting<TImage>::Compute()
   // Start at level 1 because 0 is the full resolution (provided directly by the user)
   for(unsigned int level = 1; level < this->ResolutionLevels; ++level)
   {
+    // At each level we want the image to be the previous level size modified by the downsample factor
     itk::Size<2> destinationSize;
     destinationSize[0] = imageLevels[level-1]->GetLargestPossibleRegion().GetSize()[0] * this->DownsampleFactor;
     destinationSize[1] = imageLevels[level-1]->GetLargestPossibleRegion().GetSize()[1] * this->DownsampleFactor;
@@ -117,24 +117,30 @@ void BDSInpainting<TImage>::Compute()
     typename TImage::Pointer output = TImage::New();
     Compute(imageLevels[level].GetPointer(), sourceMaskLevels[level].GetPointer(), targetMaskLevels[level].GetPointer(), output);
 
+    { // Debug only
     std::stringstream ss;
     ss << "Output_Level_" << Helpers::ZeroPad(level, 2) << ".png";
     ITKHelpers::WriteRGBImage(output.GetPointer(), ss.str());
+    }
 
+    // If this is the finest resolution, we are done
     if(level == 0)
     {
       ITKHelpers::DeepCopy(output.GetPointer(), this->Output.GetPointer());
       break;
     }
 
-    // Upsample result and copy it to the next level. A factor of 2 goes up one level.
+    // Upsample result and copy it to the next level.
     typename TImage::Pointer upsampled = TImage::New();
     ITKHelpers::ScaleImage(output.GetPointer(), imageLevels[level-1]->GetLargestPossibleRegion().GetSize(), upsampled.GetPointer());
+
+    { // Debug only
 //     std::cout << "Upsampled from " << output->GetLargestPossibleRegion().GetSize() << " to "
 //               << upsampled->GetLargestPossibleRegion().GetSize() << std::endl;
 //
 //     std::cout << "Upsampled size: " << upsampled->GetLargestPossibleRegion().GetSize() << std::endl;
 //     std::cout << "Next level size: " << imageLevels[level - 1]->GetLargestPossibleRegion().GetSize() << std::endl;
+    }
 
     // Only keep the computed pixels in the hole - the rest of the pixels are simply from one level up.
     MaskOperations::CopyInHoleRegion(upsampled.GetPointer(),
@@ -159,12 +165,6 @@ void BDSInpainting<TImage>::Compute(TImage* const image, Mask* const sourceMask,
   // Initialize the image to operate on
   typename TImage::Pointer currentImage = TImage::New();
   ITKHelpers::DeepCopy(image, currentImage.GetPointer());
-
-  // We must get a dummy pixel from the image and then fill it with zero to make sure the number
-  // of components of the pixel is correct.
-  itk::Index<2> zeroIndex = {{0,0}};
-  typename TImage::PixelType zeroPixel = image->GetPixel(zeroIndex);
-  zeroPixel.Fill(0);
 
   itk::ImageRegion<2> fullRegion = image->GetLargestPossibleRegion();
 
@@ -204,103 +204,17 @@ void BDSInpainting<TImage>::Compute(TImage* const image, Mask* const sourceMask,
     }
     catch (std::runtime_error &e)
     {
-      if(e.what() == std::string("PatchMatch: No valid source regions!"))
-      {
-        //std::cout << "Caught exception." << std::endl;
-        return;
-      }
+      std::cout << e.what() << std::endl;
+      return;
     }
 
     typename PatchMatch<TImage>::PMImageType* nnField = patchMatch.GetOutput();
 
-    // The contribution of each pixel q to the error term (d_cohere) = 1/N_T \sum_{i=1}^m (S(p_i) - T(q))^2
-    // To find the best color T(q) (iterative update rule), differentiate with respect to T(q),
-    // set to 0, and solve for T(q):
-    // T(q) = \frac{1}{m} \sum_{i=1}^m S(p_i)
+    // Update the target pixels
+    typename TImage::Pointer updatedImage = TImage::New();
+    UpdatePixels(currentImage, targetMask, nnField, updatedImage);
 
-    // We don't want to change pixels directly on the
-    // output image during the iteration, but rather compute them all and then update them all simultaneously.
-    typename TImage::Pointer updateImage = TImage::New();
-    ITKHelpers::DeepCopy(currentImage.GetPointer(), updateImage.GetPointer());
-
-    // Loop over the whole image (patch centers)
-//     itk::ImageRegion<2> internalRegion =
-//              ITKHelpers::GetInternalRegion(fullRegion, this->PatchRadius);
-
-    itk::ImageRegion<2> holeBoundingBox = MaskOperations::ComputeHoleBoundingBox(targetMask);
-
-    itk::ImageRegionIteratorWithIndex<TImage> imageIterator(updateImage,
-                                                               holeBoundingBox);
-
-    while(!imageIterator.IsAtEnd())
-    {
-      itk::Index<2> currentPixel = imageIterator.GetIndex();
-      if(targetMask->IsHole(currentPixel)) // We have come across a pixel to be filled
-      {
-        // Zero the pixel - it will be additively updated
-        updateImage->SetPixel(currentPixel, zeroPixel);
-
-        itk::ImageRegion<2> currentRegion =
-             ITKHelpers::GetRegionInRadiusAroundPixel(currentPixel, this->PatchRadius);
-
-        std::vector<itk::ImageRegion<2> > patchesContainingPixel =
-              ITKHelpers::GetAllPatchesContainingPixel(currentPixel,
-                                                       this->PatchRadius,
-                                                       fullRegion);
-
-        std::vector<typename TImage::PixelType> contributingPixels(patchesContainingPixel.size());
-        std::vector<float> contributingScores(patchesContainingPixel.size());
-
-        for(unsigned int containingPatchId = 0;
-            containingPatchId < patchesContainingPixel.size(); ++containingPatchId)
-        {
-          itk::Index<2> containingRegionCenter =
-                      ITKHelpers::GetRegionCenter(patchesContainingPixel[containingPatchId]);
-          Match bestMatch = nnField->GetPixel(containingRegionCenter);
-          itk::ImageRegion<2> bestMatchRegion = bestMatch.Region;
-          itk::Index<2> bestMatchRegionCenter = ITKHelpers::GetRegionCenter(bestMatchRegion);
-
-//           std::cout << "containingRegionCenter: " << containingRegionCenter << std::endl;
-//           std::cout << "bestMatchRegionCenter: " << bestMatchRegionCenter << std::endl;
-
-          // Compute the offset of the pixel in question relative to the center of the current patch that contains the pixel
-          itk::Offset<2> offset = currentPixel - containingRegionCenter;
-
-          // Compute the location of the pixel in the best matching patch that is the
-          // same position of the pixel in question relative to the containing patch
-          itk::Index<2> correspondingPixel = bestMatchRegionCenter + offset;
-
-          contributingPixels[containingPatchId] = currentImage->GetPixel(correspondingPixel);
-          contributingScores[containingPatchId] = bestMatch.Score;
-
-        } // end loop over containing patches
-
-        // Compute new pixel value
-
-        // Select a method to construct new pixel
-        // TImage::PixelType newValue = ITKStatistics::Average(contributingPixels);
-
-        // TImage::PixelType newValue = Helpers::WeightedSum(contributingPixels, contributingScores);
-
-        // Take the pixel from the best matching patch
-        unsigned int patchId = Helpers::argmin(contributingScores);
-        typename TImage::PixelType newValue = contributingPixels[patchId];
-
-        // Use the pixel closest to the average pixel
-//         TImage::PixelType averagePixel = ITKStatistics::Average(contributingPixels);
-        //unsigned int patchId = ITKHelpers::ClosestPoint(contributingPixels, averagePixel);
-//         TImage::PixelType newValue = contributingPixels[patchId];
-
-        updateImage->SetPixel(currentPixel, newValue);
-
-//         std::cout << "Pixel was " << currentImage->GetPixel(currentPixel)
-//                   << " and is now " << updateImage->GetPixel(currentPixel) << std::endl;
-      } // end if is hole
-
-      ++imageIterator;
-    } // end loop over image
-
-    MaskOperations::CopyInHoleRegion(updateImage.GetPointer(), currentImage.GetPointer(), targetMask);
+    MaskOperations::CopyInHoleRegion(updatedImage.GetPointer(), currentImage.GetPointer(), targetMask);
 
     std::stringstream ssPNG;
     ssPNG << "BDS_Iteration_" << Helpers::ZeroPad(iteration, 2) << ".png";
@@ -369,6 +283,105 @@ template <typename TImage>
 void BDSInpainting<TImage>::SetDownsampleFactor(const float downsampleFactor)
 {
   this->DownsampleFactor = downsampleFactor;
+}
+
+template <typename TImage>
+void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
+                                         const Mask* const targetMask,
+                                         typename PatchMatch<TImage>::PMImageType* nnField,
+                                         TImage* const updatedImage)
+{
+  // The contribution of each pixel q to the error term (d_cohere) = 1/N_T \sum_{i=1}^m (S(p_i) - T(q))^2
+  // To find the best color T(q) (iterative update rule), differentiate with respect to T(q),
+  // set to 0, and solve for T(q):
+  // T(q) = \frac{1}{m} \sum_{i=1}^m S(p_i)
+
+  // This is done so in the algorithm we can use 'fullRegion', since it refers to the same region for the image and mask.
+  // (So there is no confusion such as "why is the mask's region used here instead of the image's?")
+  itk::ImageRegion<2> fullRegion = oldImage->GetLargestPossibleRegion();
+
+  // Only iterate over this region, as it is the only region where a hole pixel can be found
+  itk::ImageRegion<2> holeBoundingBox = MaskOperations::ComputeHoleBoundingBox(targetMask);
+
+  // We don't want to change pixels directly on the
+  // output image during the iteration, but rather compute them all and then update them all simultaneously.
+  ITKHelpers::DeepCopy(oldImage, updatedImage);
+
+  // We must get a dummy pixel from the image and then fill it with zero to make sure the number
+  // of components of the pixel is correct.
+  itk::Index<2> zeroIndex = {{0,0}};
+  typename TImage::PixelType zeroPixel = oldImage->GetPixel(zeroIndex);
+  zeroPixel.Fill(0);
+
+  itk::ImageRegionIteratorWithIndex<TImage> imageIterator(updatedImage, holeBoundingBox);
+
+  while(!imageIterator.IsAtEnd())
+  {
+    itk::Index<2> currentPixel = imageIterator.GetIndex();
+    if(targetMask->IsHole(currentPixel)) // We have come across a pixel to be filled
+    {
+      // Zero the pixel - it will be additively updated
+      updatedImage->SetPixel(currentPixel, zeroPixel);
+
+      itk::ImageRegion<2> currentRegion =
+            ITKHelpers::GetRegionInRadiusAroundPixel(currentPixel, this->PatchRadius);
+
+      std::vector<itk::ImageRegion<2> > patchesContainingPixel =
+            ITKHelpers::GetAllPatchesContainingPixel(currentPixel,
+                                                     this->PatchRadius,
+                                                     fullRegion);
+
+      std::vector<typename TImage::PixelType> contributingPixels(patchesContainingPixel.size());
+      std::vector<float> contributingScores(patchesContainingPixel.size());
+
+      for(unsigned int containingPatchId = 0;
+          containingPatchId < patchesContainingPixel.size(); ++containingPatchId)
+      {
+        itk::Index<2> containingRegionCenter =
+                    ITKHelpers::GetRegionCenter(patchesContainingPixel[containingPatchId]);
+        Match bestMatch = nnField->GetPixel(containingRegionCenter);
+        itk::ImageRegion<2> bestMatchRegion = bestMatch.Region;
+        itk::Index<2> bestMatchRegionCenter = ITKHelpers::GetRegionCenter(bestMatchRegion);
+
+//           std::cout << "containingRegionCenter: " << containingRegionCenter << std::endl;
+//           std::cout << "bestMatchRegionCenter: " << bestMatchRegionCenter << std::endl;
+
+        // Compute the offset of the pixel in question relative to the center of the current patch that contains the pixel
+        itk::Offset<2> offset = currentPixel - containingRegionCenter;
+
+        // Compute the location of the pixel in the best matching patch that is the
+        // same position of the pixel in question relative to the containing patch
+        itk::Index<2> correspondingPixel = bestMatchRegionCenter + offset;
+
+        contributingPixels[containingPatchId] = oldImage->GetPixel(correspondingPixel);
+        contributingScores[containingPatchId] = bestMatch.Score;
+
+      } // end loop over containing patches
+
+      // Compute new pixel value
+
+      // Select a method to construct new pixel
+      // TImage::PixelType newValue = Statistics::Average(contributingPixels);
+
+      // TImage::PixelType newValue = Helpers::WeightedSum(contributingPixels, contributingScores);
+
+      // Take the pixel from the best matching patch
+      unsigned int patchId = Helpers::argmin(contributingScores);
+      typename TImage::PixelType newValue = contributingPixels[patchId];
+
+      // Use the pixel closest to the average pixel
+//         TImage::PixelType averagePixel = ITKStatistics::Average(contributingPixels);
+      //unsigned int patchId = ITKHelpers::ClosestPoint(contributingPixels, averagePixel);
+//         TImage::PixelType newValue = contributingPixels[patchId];
+
+      updatedImage->SetPixel(currentPixel, newValue);
+
+//         std::cout << "Pixel was " << currentImage->GetPixel(currentPixel)
+//                   << " and is now " << updateImage->GetPixel(currentPixel) << std::endl;
+    } // end if is hole
+
+    ++imageIterator;
+  } // end loop over image
 }
 
 #endif

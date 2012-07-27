@@ -26,7 +26,8 @@
 #include "itkVectorImage.h"
 
 // Submodules
-#include "PatchMatch/Mask/Mask.h"
+#include "Mask/Mask.h"
+#include "PatchMatch/PatchMatch.h"
 
 /** This class uses PatchMatch to compute the nearest neighbor field, and then the
  *  coherence term from Bidirectional Similarity to perform inpainting. */
@@ -99,6 +100,12 @@ private:
 
   /** The mask where only patches in the Valid region are considered as potential matches. */
   Mask::Pointer SourceMask;
+
+  /** Using the 'nnField', compute new values for the hole pixels in the 'targetMask' and store them in 'updatedImage' */
+  void UpdatePixels(const TImage* const oldImage,
+                    const Mask* const targetMask,
+                    typename PatchMatch<TImage>::PMImageType* nnField,
+                    TImage* const updatedImage);
 };
 
 #include "BDSInpainting.hpp"
