@@ -38,68 +38,84 @@ BDSInpainting<TImage>::BDSInpainting() : ResolutionLevels(3), Iterations(5), Pat
 {
   this->Output = TImage::New();
   this->Image = TImage::New();
-  this->MaskImage = Mask::New();
+  this->SourceMask = Mask::New();
+  this->TargetMask = Mask::New();
 }
 
 template <typename TImage>
 void BDSInpainting<TImage>::Compute()
 {
-  Mask::Pointer level0mask = Mask::New();
-  level0mask->DeepCopyFrom(this->MaskImage);
+  Mask::Pointer level0sourceMask = Mask::New();
+  level0sourceMask->DeepCopyFrom(this->SourceMask);
+
+  Mask::Pointer level0targetMask = Mask::New();
+  level0targetMask->DeepCopyFrom(this->TargetMask);
 
   typename TImage::Pointer level0Image = TImage::New();
   ITKHelpers::DeepCopy(this->Image.GetPointer(), level0Image.GetPointer());
 
-  // Cannot do this! The same image is added as each element of the vector.
-  // This is std::vector behavior, nothing to do with ITK.
+  // Cannot do this! The same image is added as each element of the vector because New() is only evaluated once!
   // std::vector<TImage::Pointer> imageLevels(this->ResolutionLevels, TImage::New());
   std::vector<typename TImage::Pointer> imageLevels(this->ResolutionLevels);
-  std::vector<Mask::Pointer> maskLevels(this->ResolutionLevels);
+  std::vector<Mask::Pointer> sourceMaskLevels(this->ResolutionLevels);
+  std::vector<Mask::Pointer> targetMaskLevels(this->ResolutionLevels);
 
   imageLevels[0] = level0Image;
-  maskLevels[0] = level0mask;
+  sourceMaskLevels[0] = level0sourceMask;
+  targetMaskLevels[0] = level0targetMask;
 
+  // Downsample the image and mask to the number of specified resolutions.
+  // Start at level 1 because 0 is the full resolution (provided directly by the user)
   for(unsigned int level = 1; level < this->ResolutionLevels; ++level)
   {
     itk::Size<2> destinationSize;
     destinationSize[0] = imageLevels[level-1]->GetLargestPossibleRegion().GetSize()[0] * this->DownsampleFactor;
     destinationSize[1] = imageLevels[level-1]->GetLargestPossibleRegion().GetSize()[1] * this->DownsampleFactor;
 
-    // Downsample
+    // Downsample the image
     typename TImage::Pointer downsampledImage = TImage::New();
     ITKHelpers::ScaleImage(imageLevels[level - 1].GetPointer(), destinationSize, downsampledImage.GetPointer());
     imageLevels[level] = downsampledImage;
 
-    // Downsample
-    Mask::Pointer downsampledMask = Mask::New();
-    ITKHelpers::ScaleImage(maskLevels[level - 1].GetPointer(), destinationSize, downsampledMask.GetPointer());
-    downsampledMask->CopyInformationFrom(this->MaskImage);
-    maskLevels[level] = downsampledMask;
+    // Downsample the source mask
+    Mask::Pointer downsampledSourceMask = Mask::New();
+    ITKHelpers::ScaleImage(sourceMaskLevels[level - 1].GetPointer(), destinationSize, downsampledSourceMask.GetPointer());
+    downsampledSourceMask->CopyInformationFrom(this->SourceMask);
+    sourceMaskLevels[level] = downsampledSourceMask;
+
+    // Downsample the target mask
+    Mask::Pointer downsampledTargetMask = Mask::New();
+    ITKHelpers::ScaleImage(targetMaskLevels[level - 1].GetPointer(), destinationSize, downsampledTargetMask.GetPointer());
+    downsampledTargetMask->CopyInformationFrom(this->TargetMask);
+    targetMaskLevels[level] = downsampledTargetMask;
   }
 
+  // Debug only - write the images at every level
   for(unsigned int level = 0; level < this->ResolutionLevels; ++level)
   {
     std::cout << "Level " << level << " image resolution "
               << imageLevels[level]->GetLargestPossibleRegion().GetSize() << std::endl;
 
-    std::cout << "Level " << level << " mask resolution "
-              << maskLevels[level]->GetLargestPossibleRegion().GetSize() << std::endl;
+    std::cout << "Level " << level << " source mask resolution "
+              << sourceMaskLevels[level]->GetLargestPossibleRegion().GetSize() << std::endl;
 
     std::stringstream ssImage;
     ssImage << "Input_Level_" << Helpers::ZeroPad(level, 2) << ".png";
     ITKHelpers::WriteRGBImage(imageLevels[level].GetPointer(), ssImage.str());
 
     std::stringstream ssMask;
-    ssMask << "Mask_Level_" << Helpers::ZeroPad(level, 2) << ".png";
-    ITKHelpers::WriteImage(maskLevels[level].GetPointer(), ssMask.str());
+    ssMask << "SourceMask_Level_" << Helpers::ZeroPad(level, 2) << ".png";
+    ITKHelpers::WriteImage(sourceMaskLevels[level].GetPointer(), ssMask.str());
   }
 
+  // Compute the filling, starting at the lowest resolution and working back to the original resolution.
+  // At each level, use the output of the previous level as initialization to the next level.
   for(unsigned int level = this->ResolutionLevels - 1; level >= 0; --level)
   {
     std::cout << "BDS level " << level << " (resolution "
               << imageLevels[level]->GetLargestPossibleRegion().GetSize() << ")" << std::endl;
     typename TImage::Pointer output = TImage::New();
-    Compute(imageLevels[level].GetPointer(), maskLevels[level].GetPointer(), output);
+    Compute(imageLevels[level].GetPointer(), sourceMaskLevels[level].GetPointer(), targetMaskLevels[level].GetPointer(), output);
 
     std::stringstream ss;
     ss << "Output_Level_" << Helpers::ZeroPad(level, 2) << ".png";
@@ -123,7 +139,7 @@ void BDSInpainting<TImage>::Compute()
     // Only keep the computed pixels in the hole - the rest of the pixels are simply from one level up.
     MaskOperations::CopyInHoleRegion(upsampled.GetPointer(),
                                      imageLevels[level - 1].GetPointer(),
-                                     maskLevels[level - 1].GetPointer());
+                                     targetMaskLevels[level - 1].GetPointer());
 
     std::stringstream ssUpdated;
     ssUpdated << "UpdatedInput_Level_" << Helpers::ZeroPad(level - 1, 2) << ".png";
@@ -133,7 +149,7 @@ void BDSInpainting<TImage>::Compute()
 }
 
 template <typename TImage>
-void BDSInpainting<TImage>::Compute(TImage* const image, Mask* const mask, TImage* const output)
+void BDSInpainting<TImage>::Compute(TImage* const image, Mask* const sourceMask, Mask* const targetMask, TImage* const output)
 {
   ITKHelpers::WriteRGBImage(image, "ComputeInput.png");
 
@@ -169,8 +185,8 @@ void BDSInpainting<TImage>::Compute(TImage* const image, Mask* const mask, TImag
     // Set the image here even though it was also set outside the loop,
     // because we want to do this at every iteration.
     patchMatch.SetImage(currentImage);
-    patchMatch.SetSourceMask(mask);
-    patchMatch.SetTargetMask(mask);
+    patchMatch.SetSourceMask(sourceMask);
+    patchMatch.SetTargetMask(targetMask);
     patchMatch.SetIterations(this->PatchMatchIterations);
 
     try
@@ -211,7 +227,7 @@ void BDSInpainting<TImage>::Compute(TImage* const image, Mask* const mask, TImag
 //     itk::ImageRegion<2> internalRegion =
 //              ITKHelpers::GetInternalRegion(fullRegion, this->PatchRadius);
 
-    itk::ImageRegion<2> holeBoundingBox = MaskOperations::ComputeHoleBoundingBox(this->MaskImage);
+    itk::ImageRegion<2> holeBoundingBox = MaskOperations::ComputeHoleBoundingBox(targetMask);
 
     itk::ImageRegionIteratorWithIndex<TImage> imageIterator(updateImage,
                                                                holeBoundingBox);
@@ -219,7 +235,7 @@ void BDSInpainting<TImage>::Compute(TImage* const image, Mask* const mask, TImag
     while(!imageIterator.IsAtEnd())
     {
       itk::Index<2> currentPixel = imageIterator.GetIndex();
-      if(mask->IsHole(currentPixel)) // We have come across a pixel to be filled
+      if(targetMask->IsHole(currentPixel)) // We have come across a pixel to be filled
       {
         // Zero the pixel - it will be additively updated
         updateImage->SetPixel(currentPixel, zeroPixel);
@@ -284,7 +300,7 @@ void BDSInpainting<TImage>::Compute(TImage* const image, Mask* const mask, TImag
       ++imageIterator;
     } // end loop over image
 
-    MaskOperations::CopyInHoleRegion(updateImage.GetPointer(), currentImage.GetPointer(), mask);
+    MaskOperations::CopyInHoleRegion(updateImage.GetPointer(), currentImage.GetPointer(), targetMask);
 
     std::stringstream ssPNG;
     ssPNG << "BDS_Iteration_" << Helpers::ZeroPad(iteration, 2) << ".png";
@@ -321,9 +337,15 @@ void BDSInpainting<TImage>::SetImage(TImage* const image)
 }
 
 template <typename TImage>
-void BDSInpainting<TImage>::SetMask(Mask* const mask)
+void BDSInpainting<TImage>::SetSourceMask(Mask* const mask)
 {
-  this->MaskImage->DeepCopyFrom(mask);
+  this->SourceMask->DeepCopyFrom(mask);
+}
+
+template <typename TImage>
+void BDSInpainting<TImage>::SetTargetMask(Mask* const mask)
+{
+  this->TargetMask->DeepCopyFrom(mask);
 }
 
 template <typename TImage>

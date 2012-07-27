@@ -59,10 +59,13 @@ int main(int argc, char*argv[])
   mask->SetValidValue(255);
   mask->Read(maskFilename);
 
+  // Here, the source match and target match are the same, specifying the classicial "use pixels outside the hole to fill the pixels inside the hole".
+  // In an interactive algorith, the user could manually specify a source region, improving the resulting inpainting.
   BDSInpainting<ImageType> bdsInpainting;
   bdsInpainting.SetPatchRadius(7);
   bdsInpainting.SetImage(imageReader->GetOutput());
-  bdsInpainting.SetMask(mask);
+  bdsInpainting.SetSourceMask(mask);
+  bdsInpainting.SetTargetMask(mask);
   bdsInpainting.SetResolutionLevels(1);
   //bdsInpainting.SetResolutionLevels(2);
 

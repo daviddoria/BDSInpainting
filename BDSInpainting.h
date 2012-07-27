@@ -42,7 +42,7 @@ public:
   void Compute();
 
   /** This function does the actual work of inpainting a single level. It is called from Compute() at multiple resolutions. */
-  void Compute(TImage* const image, Mask* const mask, TImage* const output);
+  void Compute(TImage* const image, Mask* const sourceMask, Mask* const targetMask, TImage* const output);
 
   /** Get the resulting inpainted image. */
   TImage* GetOutput();
@@ -65,10 +65,11 @@ public:
   /** Set the image to fill. */
   void SetImage(TImage* const image);
 
-  /** Set the mask that indicates where to fill the image. The same mask is used as the source mask and target mask in the PatchMatch
-    * algorithm, indicating "use patches outside the hole to fill the pixels inside the hole". This could be generalized to allow user specified
-    * regions to take source patches from, for example. */
-  void SetMask(Mask* const mask);
+  /** Set the mask that indicates where to take source patches from. Source patches are patches that are entirely in the Valid region.*/
+  void SetSourceMask(Mask* const mask);
+
+  /** Set the mask that indicates where to fill the image. Pixels in the Hole region should be filled.*/
+  void SetTargetMask(Mask* const mask);
 
 private:
 
@@ -93,8 +94,11 @@ private:
   /** The image to fill. */
   typename TImage::Pointer Image;
 
-  /** The mask indicating where to fill the image. */
-  Mask::Pointer MaskImage;
+  /** The mask where Hole pixels indicate the pixels to fill. */
+  Mask::Pointer TargetMask;
+
+  /** The mask where only patches in the Valid region are considered as potential matches. */
+  Mask::Pointer SourceMask;
 };
 
 #include "BDSInpainting.hpp"
