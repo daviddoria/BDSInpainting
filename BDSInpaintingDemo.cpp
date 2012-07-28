@@ -72,9 +72,10 @@ int main(int argc, char*argv[])
 
   Mask::Pointer sourceMask = Mask::New();
   sourceMask->Read(sourceMaskFilename);
-
+  
   Mask::Pointer targetMask = Mask::New();
   targetMask->Read(targetMaskFilename);
+  std::cout << "target mask has " << targetMask->CountHolePixels() << " hole pixels." << std::endl;
 
   // Setup the patch distance functor
   SSD<ImageType> ssdFunctor;
@@ -95,10 +96,15 @@ int main(int argc, char*argv[])
   bdsInpainting.SetImage(imageReader->GetOutput());
   bdsInpainting.SetSourceMask(sourceMask);
   bdsInpainting.SetTargetMask(targetMask);
-  bdsInpainting.SetResolutionLevels(1); // This means simply fill the image at the original resolution without any downsampling
+
+  // This means simply fill the image at the original resolution without any downsampling
+  bdsInpainting.SetResolutionLevels(1);
+
   //bdsInpainting.SetResolutionLevels(2);
 
   bdsInpainting.SetIterations(4);
+
+  bdsInpainting.SetCompositingMethod(BDSInpainting<ImageType>::WEIGHTED_AVERAGE);
 
   bdsInpainting.SetDownsampleFactor(.5);
 

@@ -35,7 +35,9 @@
 #include <ctime>
 
 template <typename TImage>
-BDSInpainting<TImage>::BDSInpainting() : ResolutionLevels(3), Iterations(5), PatchRadius(7), DownsampleFactor(.5)
+BDSInpainting<TImage>::BDSInpainting() : ResolutionLevels(3), Iterations(5),
+                                         PatchRadius(7), DownsampleFactor(.5),
+                                         CompositingMethod(WEIGHTED_AVERAGE)
 {
   this->Output = TImage::New();
   this->Image = TImage::New();
@@ -49,8 +51,10 @@ void BDSInpainting<TImage>::Compute()
   // Poisson fill the input image
   typedef PoissonEditing<typename TypeTraits<typename TImage::PixelType>::ComponentType> PoissonEditingType;
 
-  typename PoissonEditingType::GuidanceFieldType::Pointer zeroGuidanceField = PoissonEditingType::GuidanceFieldType::New();
+  typename PoissonEditingType::GuidanceFieldType::Pointer zeroGuidanceField =
+            PoissonEditingType::GuidanceFieldType::New();
   zeroGuidanceField->SetRegions(this->Image->GetLargestPossibleRegion());
+  zeroGuidanceField->Allocate();
   typename PoissonEditingType::GuidanceFieldType::PixelType zeroPixel;
   zeroPixel.Fill(0);
   ITKHelpers::SetImageToConstant(zeroGuidanceField.GetPointer(), zeroPixel);
@@ -58,6 +62,8 @@ void BDSInpainting<TImage>::Compute()
   PoissonEditingType::FillImage(this->Image.GetPointer(), this->TargetMask,
                                 zeroGuidanceField.GetPointer(), this->Image.GetPointer());
 
+  ITKHelpers::WriteRGBImage(this->Image.GetPointer(), "PoissonFilled.png");
+  
   // The finest scale masks and image are simply the user inputs.
   Mask::Pointer level0sourceMask = Mask::New();
   level0sourceMask->DeepCopyFrom(this->SourceMask);
@@ -82,23 +88,28 @@ void BDSInpainting<TImage>::Compute()
   {
     // At each level we want the image to be the previous level size modified by the downsample factor
     itk::Size<2> destinationSize;
-    destinationSize[0] = imageLevels[level-1]->GetLargestPossibleRegion().GetSize()[0] * this->DownsampleFactor;
-    destinationSize[1] = imageLevels[level-1]->GetLargestPossibleRegion().GetSize()[1] * this->DownsampleFactor;
+    destinationSize[0] = imageLevels[level-1]->GetLargestPossibleRegion().GetSize()[0] *
+                         this->DownsampleFactor;
+    destinationSize[1] = imageLevels[level-1]->GetLargestPossibleRegion().GetSize()[1] *
+                         this->DownsampleFactor;
 
     // Downsample the image
     typename TImage::Pointer downsampledImage = TImage::New();
-    ITKHelpers::ScaleImage(imageLevels[level - 1].GetPointer(), destinationSize, downsampledImage.GetPointer());
+    ITKHelpers::ScaleImage(imageLevels[level - 1].GetPointer(), destinationSize,
+                           downsampledImage.GetPointer());
     imageLevels[level] = downsampledImage;
 
     // Downsample the source mask
     Mask::Pointer downsampledSourceMask = Mask::New();
-    ITKHelpers::ScaleImage(sourceMaskLevels[level - 1].GetPointer(), destinationSize, downsampledSourceMask.GetPointer());
+    ITKHelpers::ScaleImage(sourceMaskLevels[level - 1].GetPointer(), destinationSize,
+                           downsampledSourceMask.GetPointer());
     downsampledSourceMask->CopyInformationFrom(this->SourceMask);
     sourceMaskLevels[level] = downsampledSourceMask;
 
     // Downsample the target mask
     Mask::Pointer downsampledTargetMask = Mask::New();
-    ITKHelpers::ScaleImage(targetMaskLevels[level - 1].GetPointer(), destinationSize, downsampledTargetMask.GetPointer());
+    ITKHelpers::ScaleImage(targetMaskLevels[level - 1].GetPointer(), destinationSize,
+                           downsampledTargetMask.GetPointer());
     downsampledTargetMask->CopyInformationFrom(this->TargetMask);
     targetMaskLevels[level] = downsampledTargetMask;
   }
@@ -128,7 +139,8 @@ void BDSInpainting<TImage>::Compute()
     std::cout << "BDS level " << level << " (resolution "
               << imageLevels[level]->GetLargestPossibleRegion().GetSize() << ")" << std::endl;
     typename TImage::Pointer output = TImage::New();
-    Compute(imageLevels[level].GetPointer(), sourceMaskLevels[level].GetPointer(), targetMaskLevels[level].GetPointer(), output);
+    Compute(imageLevels[level].GetPointer(), sourceMaskLevels[level].GetPointer(),
+            targetMaskLevels[level].GetPointer(), output);
 
     { // Debug only
     std::stringstream ss;
@@ -145,14 +157,16 @@ void BDSInpainting<TImage>::Compute()
 
     // Upsample result and copy it to the next level.
     typename TImage::Pointer upsampled = TImage::New();
-    ITKHelpers::ScaleImage(output.GetPointer(), imageLevels[level-1]->GetLargestPossibleRegion().GetSize(), upsampled.GetPointer());
+    ITKHelpers::ScaleImage(output.GetPointer(), imageLevels[level-1]->GetLargestPossibleRegion().GetSize(),
+                           upsampled.GetPointer());
 
     { // Debug only
 //     std::cout << "Upsampled from " << output->GetLargestPossibleRegion().GetSize() << " to "
 //               << upsampled->GetLargestPossibleRegion().GetSize() << std::endl;
 //
 //     std::cout << "Upsampled size: " << upsampled->GetLargestPossibleRegion().GetSize() << std::endl;
-//     std::cout << "Next level size: " << imageLevels[level - 1]->GetLargestPossibleRegion().GetSize() << std::endl;
+//     std::cout << "Next level size: " << imageLevels[level - 1]->GetLargestPossibleRegion().GetSize()
+//               << std::endl;
     }
 
     // Only keep the computed pixels in the hole - the rest of the pixels are simply from one level up.
@@ -168,7 +182,8 @@ void BDSInpainting<TImage>::Compute()
 }
 
 template <typename TImage>
-void BDSInpainting<TImage>::Compute(TImage* const image, Mask* const sourceMask, Mask* const targetMask, TImage* const output)
+void BDSInpainting<TImage>::Compute(TImage* const image, Mask* const sourceMask, Mask* const targetMask,
+                                    TImage* const output)
 {
   ITKHelpers::WriteRGBImage(image, "ComputeInput.png");
 
@@ -200,7 +215,8 @@ void BDSInpainting<TImage>::Compute(TImage* const image, Mask* const sourceMask,
       }
       else
       {
-        // For now don't initialize with the previous NN field - though this might work and be a huge speed up.
+        // For now don't initialize with the previous NN field - though this
+        // might work and be a huge speed up.
         this->PatchMatchFunctor.Compute(NULL);
         //this->PatchMatchFunctor.Compute(init);
       }
@@ -213,9 +229,15 @@ void BDSInpainting<TImage>::Compute(TImage* const image, Mask* const sourceMask,
 
     typename PatchMatch<TImage>::PMImageType* nnField = this->PatchMatchFunctor.GetOutput();
 
+    ITKHelpers::WriteRGBImage(currentImage.GetPointer(), "BeforeUpdate.png");
+    
     // Update the target pixels
     typename TImage::Pointer updatedImage = TImage::New();
+    std::cout << "Updating pixels..." << std::endl;
     UpdatePixels(currentImage, targetMask, nnField, updatedImage);
+    std::cout << "Done updating pixels." << std::endl;
+    ITKHelpers::WriteRGBImage(updatedImage.GetPointer(), "Updated.png");
+    ITKHelpers::WriteRGBImage(currentImage.GetPointer(), "Current.png");
 
     MaskOperations::CopyInHoleRegion(updatedImage.GetPointer(), currentImage.GetPointer(), targetMask);
 
@@ -291,7 +313,7 @@ void BDSInpainting<TImage>::SetDownsampleFactor(const float downsampleFactor)
 template <typename TImage>
 void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
                                          const Mask* const targetMask,
-                                         typename PatchMatch<TImage>::PMImageType* nnField,
+                                         const typename PatchMatch<TImage>::PMImageType* const nnField,
                                          TImage* const updatedImage)
 {
   // The contribution of each pixel q to the error term (d_cohere) = 1/N_T \sum_{i=1}^m (S(p_i) - T(q))^2
@@ -299,7 +321,10 @@ void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
   // set to 0, and solve for T(q):
   // T(q) = \frac{1}{m} \sum_{i=1}^m S(p_i)
 
-  // This is done so in the algorithm we can use 'fullRegion', since it refers to the same region for the image and mask.
+  ITKHelpers::WriteRGBImage(oldImage, "UpdatePixels_OldImage.png");
+
+  // This is done so in the algorithm we can use 'fullRegion', since it refers
+  // to the same region for the image and mask.
   // (So there is no confusion such as "why is the mask's region used here instead of the image's?")
   itk::ImageRegion<2> fullRegion = oldImage->GetLargestPossibleRegion();
 
@@ -318,14 +343,13 @@ void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
 
   itk::ImageRegionIteratorWithIndex<TImage> imageIterator(updatedImage, holeBoundingBox);
 
+  unsigned int pixelCounter = 0;
   while(!imageIterator.IsAtEnd())
   {
     itk::Index<2> currentPixel = imageIterator.GetIndex();
     if(targetMask->IsHole(currentPixel)) // We have come across a pixel to be filled
     {
-      // Zero the pixel - it will be additively updated
-      updatedImage->SetPixel(currentPixel, zeroPixel);
-
+      std::cout << "Updating " << pixelCounter << " of " << holeBoundingBox.GetNumberOfPixels() << std::endl;
       itk::ImageRegion<2> currentRegion =
             ITKHelpers::GetRegionInRadiusAroundPixel(currentPixel, this->PatchRadius);
 
@@ -334,6 +358,7 @@ void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
                                                      this->PatchRadius,
                                                      fullRegion);
 
+      // Compute the list of pixels contributing to this patch and their associated patch scores
       std::vector<typename TImage::PixelType> contributingPixels(patchesContainingPixel.size());
       std::vector<float> contributingScores(patchesContainingPixel.size());
 
@@ -346,10 +371,12 @@ void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
         itk::ImageRegion<2> bestMatchRegion = bestMatch.Region;
         itk::Index<2> bestMatchRegionCenter = ITKHelpers::GetRegionCenter(bestMatchRegion);
 
-//           std::cout << "containingRegionCenter: " << containingRegionCenter << std::endl;
-//           std::cout << "bestMatchRegionCenter: " << bestMatchRegionCenter << std::endl;
+        assert(targetMask->IsValid(bestMatchRegion));
+//         std::cout << "containingRegionCenter: " << containingRegionCenter << std::endl;
+//         std::cout << "bestMatchRegionCenter: " << bestMatchRegionCenter << std::endl;
 
-        // Compute the offset of the pixel in question relative to the center of the current patch that contains the pixel
+        // Compute the offset of the pixel in question relative to the center of
+        // the current patch that contains the pixel
         itk::Offset<2> offset = currentPixel - containingRegionCenter;
 
         // Compute the location of the pixel in the best matching patch that is the
@@ -364,18 +391,9 @@ void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
       // Compute new pixel value
 
       // Select a method to construct new pixel
-      // TImage::PixelType newValue = Statistics::Average(contributingPixels);
-
-      // TImage::PixelType newValue = Helpers::WeightedSum(contributingPixels, contributingScores);
-
-      // Take the pixel from the best matching patch
-      unsigned int patchId = Helpers::argmin(contributingScores);
-      typename TImage::PixelType newValue = contributingPixels[patchId];
-
-      // Use the pixel closest to the average pixel
-//         TImage::PixelType averagePixel = ITKStatistics::Average(contributingPixels);
-      //unsigned int patchId = ITKHelpers::ClosestPoint(contributingPixels, averagePixel);
-//         TImage::PixelType newValue = contributingPixels[patchId];
+      //std::cout << "Compositing..." << std::endl;
+      typename TImage::PixelType newValue = Composite(contributingPixels, contributingScores);
+      //std::cout << "Done compositing." << std::endl;
 
       updatedImage->SetPixel(currentPixel, newValue);
 
@@ -384,7 +402,115 @@ void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
     } // end if is hole
 
     ++imageIterator;
+    pixelCounter++;
   } // end loop over image
+}
+
+template <typename TImage>
+void BDSInpainting<TImage>::SetCompositingMethod(const CompositingMethodEnum& compositingMethod)
+{
+  this->CompositingMethod = compositingMethod;
+}
+
+/** Composite using the specified CompositingMethod. */
+template <typename TImage>
+typename TImage::PixelType BDSInpainting<TImage>::Composite(
+    const std::vector<typename TImage::PixelType>& contributingPixels,
+    const std::vector<float>& contributingScores)
+{
+  assert(contributingPixels.size() == contributingScores.size());
+  assert(contributingPixels.size() > 0);
+
+  if(this->CompositingMethod == AVERAGE)
+  {
+    return CompositeAverage(contributingPixels);
+  }
+  else if(this->CompositingMethod == WEIGHTED_AVERAGE)
+  {
+    return CompositeWeightedAverage(contributingPixels, contributingScores);
+  }
+  else if(this->CompositingMethod == CLOSEST_TO_AVERAGE)
+  {
+    return CompositeClosestToAverage(contributingPixels, contributingScores);
+  }
+  else if(this->CompositingMethod == BEST_PATCH)
+  {
+    return CompositeBestPatch(contributingPixels, contributingScores);
+  }
+  else
+  {
+    throw std::runtime_error("An invalid CompositingMethod was selected!");
+  }
+}
+
+/** Composite by averaging pixels. */
+template <typename TImage>
+typename TImage::PixelType BDSInpainting<TImage>::CompositeAverage(
+  const std::vector<typename TImage::PixelType>& contributingPixels)
+{
+  typename TImage::PixelType newValue = Statistics::Average(contributingPixels);
+  return newValue;
+}
+
+/** Composite by weighted averaging. */
+template <typename TImage>
+typename TImage::PixelType BDSInpainting<TImage>::CompositeWeightedAverage(
+    const std::vector<typename TImage::PixelType>& contributingPixels,
+    const std::vector<float>& contributingScores)
+{
+  // If there is only one element, simply return it.
+  if(contributingScores.size() == 1)
+  {
+    return contributingPixels[0];
+  }
+
+  // The weights should be inversely proportional to the patch errors/scores.
+  // That is, a patch with a high error should get a low weight. We accomplish this by
+  // making the weight equal to 1 - (value - min) / |range|
+
+  float minValue = *std::min_element(contributingScores.begin(), contributingScores.end());
+  float maxValue = *std::max_element(contributingScores.begin(), contributingScores.end());
+  float range = maxValue - minValue;
+  // If the range is zero, all elements are the same so just return the first one
+  if(range == 0.0f)
+  {
+    return contributingPixels[0];
+  }
+
+  std::vector<float> weights(contributingScores.size());
+  for(unsigned int i = 0; i < contributingScores.size(); ++i)
+  {
+    weights[i] = 1.0f - (contributingScores[i] - minValue) / range;
+  }
+
+  // Make the weights sum to 1
+  Helpers::NormalizeVectorInPlace(weights);
+
+  typename TImage::PixelType newValue = Helpers::WeightedAverage(contributingPixels, weights);
+  return newValue;
+}
+
+template <typename TImage>
+typename TImage::PixelType BDSInpainting<TImage>::CompositeClosestToAverage(
+    const std::vector<typename TImage::PixelType>& contributingPixels,
+    const std::vector<float>& contributingScores)
+{
+  // Use the pixel closest to the average pixel
+  typename TImage::PixelType averagePixel = Statistics::Average(contributingPixels);
+  unsigned int patchId = ITKHelpers::ClosestValueIndex(contributingPixels, averagePixel);
+  typename TImage::PixelType newValue = contributingPixels[patchId];
+  return newValue;
+}
+
+template <typename TImage>
+typename TImage::PixelType BDSInpainting<TImage>::CompositeBestPatch(
+    const std::vector<typename TImage::PixelType>& contributingPixels,
+    const std::vector<float>& contributingScores)
+{
+  // Take the pixel from the best matching patch
+  unsigned int patchId = Helpers::argmin(contributingScores);
+  typename TImage::PixelType newValue = contributingPixels[patchId];
+  return newValue;
 }
 
 #endif

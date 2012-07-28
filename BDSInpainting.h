@@ -39,10 +39,17 @@ public:
   /** Constructor. */
   BDSInpainting();
 
+  /** Choices of compositing method. */
+  enum CompositingMethodEnum {BEST_PATCH, WEIGHTED_AVERAGE, AVERAGE, CLOSEST_TO_AVERAGE};
+
+  /** Set the compositing method to use. */
+  void SetCompositingMethod(const CompositingMethodEnum& compositingMethod);
+
   /** The main driver. This performs downsampling and inpainting over multiple resolutions. */
   void Compute();
 
-  /** This function does the actual work of inpainting a single level. It is called from Compute() at multiple resolutions. */
+  /** This function does the actual work of inpainting a single level.
+    * It is called from Compute() at multiple resolutions. */
   void Compute(TImage* const image, Mask* const sourceMask, Mask* const targetMask, TImage* const output);
 
   /** Get the resulting inpainted image. */
@@ -66,7 +73,8 @@ public:
   /** Set the image to fill. */
   void SetImage(TImage* const image);
 
-  /** Set the mask that indicates where to take source patches from. Source patches are patches that are entirely in the Valid region.*/
+  /** Set the mask that indicates where to take source patches from. Source patches
+    * are patches that are entirely in the Valid region.*/
   void SetSourceMask(Mask* const mask);
 
   /** Set the mask that indicates where to fill the image. Pixels in the Hole region should be filled.*/
@@ -101,11 +109,39 @@ private:
   /** The mask where only patches in the Valid region are considered as potential matches. */
   Mask::Pointer SourceMask;
 
-  /** Using the 'nnField', compute new values for the hole pixels in the 'targetMask' and store them in 'updatedImage' */
+  /** Using the 'nnField', compute new values for the hole pixels in the 'targetMask' and
+    * store them in 'updatedImage' */
   void UpdatePixels(const TImage* const oldImage,
                     const Mask* const targetMask,
-                    typename PatchMatch<TImage>::PMImageType* nnField,
+                    const typename PatchMatch<TImage>::PMImageType* const nnField,
                     TImage* const updatedImage);
+
+  /** The compositing method to use. */
+  CompositingMethodEnum CompositingMethod;
+
+  /** Composite using the specified CompositingMethod. */
+  typename TImage::PixelType Composite(
+     const std::vector<typename TImage::PixelType>& contributingPixels,
+     const std::vector<float>& contributingScores);
+
+  /** Composite by averaging pixels. */
+  typename TImage::PixelType CompositeAverage(
+    const std::vector<typename TImage::PixelType>& contributingPixels);
+
+  /** Composite by weighted averaging. */
+  typename TImage::PixelType CompositeWeightedAverage(
+     const std::vector<typename TImage::PixelType>& contributingPixels,
+     const std::vector<float>& contributingScores);
+
+  /** Composite by choosing the pixel closest to the average. */
+  typename TImage::PixelType CompositeClosestToAverage(
+     const std::vector<typename TImage::PixelType>& contributingPixels,
+     const std::vector<float>& contributingScores);
+
+  /** Composite by choosing the pixel from the best patch. */
+  typename TImage::PixelType CompositeBestPatch(
+     const std::vector<typename TImage::PixelType>& contributingPixels,
+     const std::vector<float>& contributingScores);
 };
 
 #include "BDSInpainting.hpp"

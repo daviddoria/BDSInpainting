@@ -4,7 +4,7 @@ PROJECT(BDSInpainting)
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=gnu++0x")
 
 # Eigen
-include_directories(/media/portable/src/Eigen)
+#include_directories(/media/portable/src/Eigen)
 
 # ITK
 FIND_PACKAGE(ITK REQUIRED ITKCommon ITKIOImageBase ITKDistanceMap ITKIOPNG ITKIOMeta
@@ -34,4 +34,4 @@ add_custom_target(BDSInpainting BDSInpainting.hpp)
 
 # Create an executable
 ADD_EXECUTABLE(BDSInpaintingDemo BDSInpaintingDemo.cpp)
-TARGET_LINK_LIBRARIES(BDSInpaintingDemo ${PoissonEditing_libraries})
+TARGET_LINK_LIBRARIES(BDSInpaintingDemo ${PoissonEditing_libraries} ${PatchMatch_libraries})
