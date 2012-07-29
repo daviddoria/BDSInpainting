@@ -48,22 +48,7 @@ BDSInpainting<TImage>::BDSInpainting() : ResolutionLevels(3), Iterations(5),
 template <typename TImage>
 void BDSInpainting<TImage>::Compute()
 {
-  // Poisson fill the input image
-  typedef PoissonEditing<typename TypeTraits<typename TImage::PixelType>::ComponentType> PoissonEditingType;
 
-  typename PoissonEditingType::GuidanceFieldType::Pointer zeroGuidanceField =
-            PoissonEditingType::GuidanceFieldType::New();
-  zeroGuidanceField->SetRegions(this->Image->GetLargestPossibleRegion());
-  zeroGuidanceField->Allocate();
-  typename PoissonEditingType::GuidanceFieldType::PixelType zeroPixel;
-  zeroPixel.Fill(0);
-  ITKHelpers::SetImageToConstant(zeroGuidanceField.GetPointer(), zeroPixel);
-
-  PoissonEditingType::FillImage(this->Image.GetPointer(), this->TargetMask,
-                                zeroGuidanceField.GetPointer(), this->Image.GetPointer());
-
-  ITKHelpers::WriteRGBImage(this->Image.GetPointer(), "PoissonFilled.png");
-  
   // The finest scale masks and image are simply the user inputs.
   Mask::Pointer level0sourceMask = Mask::New();
   level0sourceMask->DeepCopyFrom(this->SourceMask);
@@ -349,12 +334,13 @@ void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
     itk::Index<2> currentPixel = imageIterator.GetIndex();
     if(targetMask->IsHole(currentPixel)) // We have come across a pixel to be filled
     {
+
+      { // debug only
       //std::cout << "Updating " << pixelCounter << " of "
       //          << holeBoundingBox.GetNumberOfPixels() << std::endl;
       itk::ImageRegion<2> currentRegion =
             ITKHelpers::GetRegionInRadiusAroundPixel(currentPixel, this->PatchRadius);
 
-      { // debug only
       ITKHelpers::WriteRegion(oldImage, currentRegion, "CurrentRegion.png");
       }
 
@@ -377,9 +363,16 @@ void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
         itk::Index<2> bestMatchRegionCenter = ITKHelpers::GetRegionCenter(bestMatchRegion);
 
         { // debug only
-        std::stringstream ssRegionFile;
-        ssRegionFile << "Region_" << containingPatchId << ".png";
-        ITKHelpers::WriteRegion(oldImage, bestMatchRegion, ssRegionFile.str());
+        std::cout << "Containing region center: " << containingRegionCenter << std::endl;
+        std::stringstream ssContainingRegionFile;
+        ssContainingRegionFile << "ContainingRegion_" << containingPatchId << ".png";
+        ITKHelpers::WriteRegion(oldImage, patchesContainingPixel[containingPatchId],
+                                ssContainingRegionFile.str());
+
+        std::cout << "Matching region center: " << bestMatchRegionCenter << std::endl;
+        std::stringstream ssMatchingRegionFile;
+        ssMatchingRegionFile << "MatchingRegion_" << containingPatchId << ".png";
+        ITKHelpers::WriteRegion(oldImage, bestMatchRegion, ssMatchingRegionFile.str());
         }
 
         assert(targetMask->IsValid(bestMatchRegion));

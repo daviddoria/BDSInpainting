@@ -70,6 +70,8 @@ int main(int argc, char*argv[])
   imageReader->SetFileName(imageFilename);
   imageReader->Update();
 
+  ImageType* image = imageReader->GetOutput();
+
   Mask::Pointer sourceMask = Mask::New();
   sourceMask->Read(sourceMaskFilename);
   
@@ -77,23 +79,41 @@ int main(int argc, char*argv[])
   targetMask->Read(targetMaskFilename);
   std::cout << "target mask has " << targetMask->CountHolePixels() << " hole pixels." << std::endl;
 
+  // Poisson fill the input image
+  typedef PoissonEditing<typename TypeTraits<ImageType::PixelType>::ComponentType> PoissonEditingType;
+
+  typename PoissonEditingType::GuidanceFieldType::Pointer zeroGuidanceField =
+            PoissonEditingType::GuidanceFieldType::New();
+  zeroGuidanceField->SetRegions(image->GetLargestPossibleRegion());
+  zeroGuidanceField->Allocate();
+  typename PoissonEditingType::GuidanceFieldType::PixelType zeroPixel;
+  zeroPixel.Fill(0);
+  ITKHelpers::SetImageToConstant(zeroGuidanceField.GetPointer(), zeroPixel);
+
+  PoissonEditingType::FillImage(image, targetMask,
+                                zeroGuidanceField.GetPointer(), image);
+
+  ITKHelpers::WriteRGBImage(image, "PoissonFilled.png");
+  
   // Setup the patch distance functor
   SSD<ImageType> ssdFunctor;
-  ssdFunctor.SetImage(imageReader->GetOutput());
+  ssdFunctor.SetImage(image);
 
   // Setup the PatchMatch functor
   PatchMatch<ImageType> patchMatchFunctor;
   patchMatchFunctor.SetPatchRadius(patchRadius);
-  //patchMatchFunctor.SetImage(imageReader->GetOutput());
+  //patchMatchFunctor.SetImage(image);
   patchMatchFunctor.SetPatchDistanceFunctor(&ssdFunctor);
-  patchMatchFunctor.SetIterations(3);
+  patchMatchFunctor.SetIterations(4);
   patchMatchFunctor.SetInitializationStrategy(PatchMatch<ImageType>::RANDOM);
 
-  // Here, the source match and target match are the same, specifying the classicial "use pixels outside the hole to fill the pixels inside the hole".
-  // In an interactive algorith, the user could manually specify a source region, improving the resulting inpainting.
+  // Here, the source match and target match are the same, specifying the classicial
+  // "use pixels outside the hole to fill the pixels inside the hole".
+  // In an interactive algorith, the user could manually specify a source region,
+  // improving the resulting inpainting.
   BDSInpainting<ImageType> bdsInpainting;
   bdsInpainting.SetPatchRadius(patchRadius);
-  bdsInpainting.SetImage(imageReader->GetOutput());
+  bdsInpainting.SetImage(image);
   bdsInpainting.SetSourceMask(sourceMask);
   bdsInpainting.SetTargetMask(targetMask);
 
