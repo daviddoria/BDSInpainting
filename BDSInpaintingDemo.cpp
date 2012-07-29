@@ -104,7 +104,10 @@ int main(int argc, char*argv[])
 
   bdsInpainting.SetIterations(4);
 
-  bdsInpainting.SetCompositingMethod(BDSInpainting<ImageType>::WEIGHTED_AVERAGE);
+  //bdsInpainting.SetCompositingMethod(BDSInpainting<ImageType>::WEIGHTED_AVERAGE);
+  bdsInpainting.SetCompositingMethod(BDSInpainting<ImageType>::AVERAGE);
+  //bdsInpainting.SetCompositingMethod(BDSInpainting<ImageType>::BEST_PATCH);
+  //bdsInpainting.SetCompositingMethod(BDSInpainting<ImageType>::CLOSEST_TO_AVERAGE);
 
   bdsInpainting.SetDownsampleFactor(.5);
 

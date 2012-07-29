@@ -233,9 +233,9 @@ void BDSInpainting<TImage>::Compute(TImage* const image, Mask* const sourceMask,
     
     // Update the target pixels
     typename TImage::Pointer updatedImage = TImage::New();
-    std::cout << "Updating pixels..." << std::endl;
+    //std::cout << "Updating pixels..." << std::endl;
     UpdatePixels(currentImage, targetMask, nnField, updatedImage);
-    std::cout << "Done updating pixels." << std::endl;
+    //std::cout << "Done updating pixels." << std::endl;
     ITKHelpers::WriteRGBImage(updatedImage.GetPointer(), "Updated.png");
     ITKHelpers::WriteRGBImage(currentImage.GetPointer(), "Current.png");
 
@@ -349,9 +349,14 @@ void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
     itk::Index<2> currentPixel = imageIterator.GetIndex();
     if(targetMask->IsHole(currentPixel)) // We have come across a pixel to be filled
     {
-      std::cout << "Updating " << pixelCounter << " of " << holeBoundingBox.GetNumberOfPixels() << std::endl;
+      //std::cout << "Updating " << pixelCounter << " of "
+      //          << holeBoundingBox.GetNumberOfPixels() << std::endl;
       itk::ImageRegion<2> currentRegion =
             ITKHelpers::GetRegionInRadiusAroundPixel(currentPixel, this->PatchRadius);
+
+      { // debug only
+      ITKHelpers::WriteRegion(oldImage, currentRegion, "CurrentRegion.png");
+      }
 
       std::vector<itk::ImageRegion<2> > patchesContainingPixel =
             ITKHelpers::GetAllPatchesContainingPixel(currentPixel,
@@ -370,6 +375,12 @@ void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
         Match bestMatch = nnField->GetPixel(containingRegionCenter);
         itk::ImageRegion<2> bestMatchRegion = bestMatch.Region;
         itk::Index<2> bestMatchRegionCenter = ITKHelpers::GetRegionCenter(bestMatchRegion);
+
+        { // debug only
+        std::stringstream ssRegionFile;
+        ssRegionFile << "Region_" << containingPatchId << ".png";
+        ITKHelpers::WriteRegion(oldImage, bestMatchRegion, ssRegionFile.str());
+        }
 
         assert(targetMask->IsValid(bestMatchRegion));
 //         std::cout << "containingRegionCenter: " << containingRegionCenter << std::endl;
