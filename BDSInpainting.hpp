@@ -224,7 +224,7 @@ void BDSInpainting<TImage>::Compute(TImage* const image, Mask* const sourceMask,
     ITKHelpers::WriteRGBImage(updatedImage.GetPointer(), "Updated.png");
     ITKHelpers::WriteRGBImage(currentImage.GetPointer(), "Current.png");
 
-    MaskOperations::CopyInHoleRegion(updatedImage.GetPointer(), currentImage.GetPointer(), targetMask);
+    MaskOperations::CopyInValidRegion(updatedImage.GetPointer(), currentImage.GetPointer(), targetMask);
 
     std::stringstream ssPNG;
     ssPNG << "BDS_Iteration_" << Helpers::ZeroPad(iteration, 2) << ".png";
@@ -314,7 +314,7 @@ void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
   itk::ImageRegion<2> fullRegion = oldImage->GetLargestPossibleRegion();
 
   // Only iterate over this region, as it is the only region where a hole pixel can be found
-  itk::ImageRegion<2> holeBoundingBox = MaskOperations::ComputeHoleBoundingBox(targetMask);
+  itk::ImageRegion<2> targetBoundingBox = MaskOperations::ComputeValidBoundingBox(targetMask);
 
   // We don't want to change pixels directly on the
   // output image during the iteration, but rather compute them all and then update them all simultaneously.
@@ -326,13 +326,13 @@ void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
   typename TImage::PixelType zeroPixel = oldImage->GetPixel(zeroIndex);
   zeroPixel.Fill(0);
 
-  itk::ImageRegionIteratorWithIndex<TImage> imageIterator(updatedImage, holeBoundingBox);
+  itk::ImageRegionIteratorWithIndex<TImage> imageIterator(updatedImage, targetBoundingBox);
 
   unsigned int pixelCounter = 0;
   while(!imageIterator.IsAtEnd())
   {
     itk::Index<2> currentPixel = imageIterator.GetIndex();
-    if(targetMask->IsHole(currentPixel)) // We have come across a pixel to be filled
+    if(targetMask->IsValid(currentPixel)) // We have come across a pixel to be filled
     {
 
       { // debug only
@@ -341,7 +341,7 @@ void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
       itk::ImageRegion<2> currentRegion =
             ITKHelpers::GetRegionInRadiusAroundPixel(currentPixel, this->PatchRadius);
 
-      ITKHelpers::WriteRegion(oldImage, currentRegion, "CurrentRegion.png");
+      //ITKHelpers::WriteRegion(oldImage, currentRegion, "CurrentRegion.png");
       }
 
       std::vector<itk::ImageRegion<2> > patchesContainingPixel =
@@ -363,19 +363,19 @@ void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
         itk::Index<2> bestMatchRegionCenter = ITKHelpers::GetRegionCenter(bestMatchRegion);
 
         { // debug only
-        std::cout << "Containing region center: " << containingRegionCenter << std::endl;
-        std::stringstream ssContainingRegionFile;
-        ssContainingRegionFile << "ContainingRegion_" << containingPatchId << ".png";
-        ITKHelpers::WriteRegion(oldImage, patchesContainingPixel[containingPatchId],
-                                ssContainingRegionFile.str());
+//         std::cout << "Containing region center: " << containingRegionCenter << std::endl;
+//         std::stringstream ssContainingRegionFile;
+//         ssContainingRegionFile << "ContainingRegion_" << containingPatchId << ".png";
+//         ITKHelpers::WriteRegion(oldImage, patchesContainingPixel[containingPatchId],
+//                                 ssContainingRegionFile.str());
 
-        std::cout << "Matching region center: " << bestMatchRegionCenter << std::endl;
-        std::stringstream ssMatchingRegionFile;
-        ssMatchingRegionFile << "MatchingRegion_" << containingPatchId << ".png";
-        ITKHelpers::WriteRegion(oldImage, bestMatchRegion, ssMatchingRegionFile.str());
+//         std::cout << "Matching region center: " << bestMatchRegionCenter << std::endl;
+//         std::stringstream ssMatchingRegionFile;
+//         ssMatchingRegionFile << "MatchingRegion_" << containingPatchId << ".png";
+        //ITKHelpers::WriteRegion(oldImage, bestMatchRegion, ssMatchingRegionFile.str());
         }
 
-        assert(targetMask->IsValid(bestMatchRegion));
+        assert(sourceMask->IsValid(bestMatchRegion));
 //         std::cout << "containingRegionCenter: " << containingRegionCenter << std::endl;
 //         std::cout << "bestMatchRegionCenter: " << bestMatchRegionCenter << std::endl;
 

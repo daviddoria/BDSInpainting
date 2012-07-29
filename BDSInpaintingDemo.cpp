@@ -74,10 +74,11 @@ int main(int argc, char*argv[])
 
   Mask::Pointer sourceMask = Mask::New();
   sourceMask->Read(sourceMaskFilename);
-  
+
   Mask::Pointer targetMask = Mask::New();
   targetMask->Read(targetMaskFilename);
-  std::cout << "target mask has " << targetMask->CountHolePixels() << " hole pixels." << std::endl;
+
+  //std::cout << "target mask has " << targetMask->CountHolePixels() << " hole pixels." << std::endl;
 
   // Poisson fill the input image
   typedef PoissonEditing<typename TypeTraits<ImageType::PixelType>::ComponentType> PoissonEditingType;
@@ -94,7 +95,10 @@ int main(int argc, char*argv[])
                                 zeroGuidanceField.GetPointer(), image);
 
   ITKHelpers::WriteRGBImage(image, "PoissonFilled.png");
-  
+
+  // PatchMatch requires that the target region be specified by valid pixels
+  targetMask->Invert();
+
   // Setup the patch distance functor
   SSD<ImageType> ssdFunctor;
   ssdFunctor.SetImage(image);
