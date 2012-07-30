@@ -106,10 +106,16 @@ int main(int argc, char*argv[])
   // Setup the PatchMatch functor
   PatchMatch<ImageType> patchMatchFunctor;
   patchMatchFunctor.SetPatchRadius(patchRadius);
-  //patchMatchFunctor.SetImage(image);
   patchMatchFunctor.SetPatchDistanceFunctor(&ssdFunctor);
   patchMatchFunctor.SetIterations(4);
   patchMatchFunctor.SetInitializationStrategy(PatchMatch<ImageType>::RANDOM);
+
+  // Test the result of PatchMatch here
+//   patchMatchFunctor.SetImage(image);
+//   patchMatchFunctor.SetTargetMask(targetMask);
+//   patchMatchFunctor.SetSourceMask(sourceMask);
+//   patchMatchFunctor.SetRandom(false);
+//   patchMatchFunctor.Compute(NULL);
 
   // Here, the source match and target match are the same, specifying the classicial
   // "use pixels outside the hole to fill the pixels inside the hole".
@@ -126,7 +132,8 @@ int main(int argc, char*argv[])
 
   //bdsInpainting.SetResolutionLevels(2);
 
-  bdsInpainting.SetIterations(4);
+  bdsInpainting.SetIterations(1);
+  //bdsInpainting.SetIterations(4);
 
   //bdsInpainting.SetCompositingMethod(BDSInpainting<ImageType>::WEIGHTED_AVERAGE);
   bdsInpainting.SetCompositingMethod(BDSInpainting<ImageType>::AVERAGE);

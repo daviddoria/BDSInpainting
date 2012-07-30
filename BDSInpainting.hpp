@@ -375,7 +375,7 @@ void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
         //ITKHelpers::WriteRegion(oldImage, bestMatchRegion, ssMatchingRegionFile.str());
         }
 
-        assert(sourceMask->IsValid(bestMatchRegion));
+        //assert(sourceMask->IsValid(bestMatchRegion));
 //         std::cout << "containingRegionCenter: " << containingRegionCenter << std::endl;
 //         std::cout << "bestMatchRegionCenter: " << bestMatchRegionCenter << std::endl;
 
