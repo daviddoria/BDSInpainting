@@ -32,6 +32,7 @@ endif()
 add_custom_target(BDSInpainting BDSInpainting.hpp)
 #target_link_libraries(BDSInpainting Mask PatchComparison)
 
-# Create an executable
-ADD_EXECUTABLE(BDSInpaintingDemo BDSInpaintingDemo.cpp)
-TARGET_LINK_LIBRARIES(BDSInpaintingDemo ${PoissonEditing_libraries} ${PatchMatch_libraries})
+SET(BDSInpainting_BuildDrivers ON CACHE BOOL "Build BDSInpainting drivers?")
+if(BDSInpainting_BuildDrivers)
+ add_subdirectory(Drivers)
+endif()

@@ -111,14 +111,15 @@ int main(int argc, char*argv[])
   PatchMatchRings<ImageType> patchMatchFunctor;
   patchMatchFunctor.SetPatchRadius(patchRadius);
   patchMatchFunctor.SetPatchDistanceFunctor(&ssdFunctor);
-  patchMatchFunctor.SetIterations(4);
+  patchMatchFunctor.SetIterations(1);
+  //patchMatchFunctor.SetIterations(4);
   patchMatchFunctor.SetInitializationStrategy(PatchMatch<ImageType>::RANDOM);
 
   // Test the result of PatchMatch here
 //   patchMatchFunctor.SetImage(image);
 //   patchMatchFunctor.SetTargetMask(targetMask);
 //   patchMatchFunctor.SetSourceMask(sourceMask);
-//   patchMatchFunctor.SetRandom(false);
+   patchMatchFunctor.SetRandom(false);
 //   patchMatchFunctor.Compute(NULL);
 
   // Here, the source match and target match are the same, specifying the classicial
