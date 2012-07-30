@@ -148,7 +148,7 @@ int main(int argc, char*argv[])
   bdsInpainting.SetDownsampleFactor(.5);
 
   bdsInpainting.SetPatchMatchFunctor(&patchMatchFunctor);
-  bdsInpainting.Compute();
+  bdsInpainting.Inpaint();
 
   ITKHelpers::WriteRGBImage(bdsInpainting.GetOutput(), outputFilename);
 

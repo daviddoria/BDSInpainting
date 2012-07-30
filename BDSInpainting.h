@@ -46,11 +46,11 @@ public:
   void SetCompositingMethod(const CompositingMethodEnum& compositingMethod);
 
   /** The main driver. This performs downsampling and inpainting over multiple resolutions. */
-  void Compute();
+  void Inpaint();
 
   /** This function does the actual work of inpainting a single level.
     * It is called from Compute() at multiple resolutions. */
-  void Compute(TImage* const image, Mask* const sourceMask, Mask* const targetMask, TImage* const output);
+  virtual void Compute(TImage* const image, Mask* const sourceMask, Mask* const targetMask, TImage* const output);
 
   /** Get the resulting inpainted image. */
   TImage* GetOutput();
@@ -80,7 +80,7 @@ public:
   /** Set the mask that indicates where to fill the image. Pixels in the Hole region should be filled.*/
   void SetTargetMask(Mask* const mask);
 
-private:
+protected:
 
   /** The number of resolutions to use. */
   unsigned int ResolutionLevels;

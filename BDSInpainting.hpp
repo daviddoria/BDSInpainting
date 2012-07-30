@@ -48,7 +48,7 @@ BDSInpainting<TImage>::BDSInpainting() : ResolutionLevels(3), Iterations(5),
 }
 
 template <typename TImage>
-void BDSInpainting<TImage>::Compute()
+void BDSInpainting<TImage>::Inpaint()
 {
 
   // The finest scale masks and image are simply the user inputs.
