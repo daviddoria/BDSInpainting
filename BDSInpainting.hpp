@@ -36,7 +36,9 @@
 
 template <typename TImage>
 BDSInpainting<TImage>::BDSInpainting() : ResolutionLevels(3), Iterations(5),
-                                         PatchRadius(7), DownsampleFactor(.5),
+                                         PatchRadius(7),
+                                         PatchMatchFunctor(NULL),
+                                         DownsampleFactor(.5),
                                          CompositingMethod(WEIGHTED_AVERAGE)
 {
   this->Output = TImage::New();
@@ -188,21 +190,21 @@ void BDSInpainting<TImage>::Compute(TImage* const image, Mask* const sourceMask,
     std::cout << "BDSInpainting Iteration " << iteration << std::endl;
 
     // Give the PatchMatch functor the data
-    this->PatchMatchFunctor.SetImage(currentImage);
-    this->PatchMatchFunctor.SetSourceMask(sourceMask);
-    this->PatchMatchFunctor.SetTargetMask(targetMask);
+    this->PatchMatchFunctor->SetImage(currentImage);
+    this->PatchMatchFunctor->SetSourceMask(sourceMask);
+    this->PatchMatchFunctor->SetTargetMask(targetMask);
 
     try
     {
       if(iteration == 0)
       {
-        this->PatchMatchFunctor.Compute(NULL);
+        this->PatchMatchFunctor->Compute(NULL);
       }
       else
       {
         // For now don't initialize with the previous NN field - though this
         // might work and be a huge speed up.
-        this->PatchMatchFunctor.Compute(NULL);
+        this->PatchMatchFunctor->Compute(NULL);
         //this->PatchMatchFunctor.Compute(init);
       }
     }
@@ -212,7 +214,7 @@ void BDSInpainting<TImage>::Compute(TImage* const image, Mask* const sourceMask,
       return;
     }
 
-    typename PatchMatch<TImage>::PMImageType* nnField = this->PatchMatchFunctor.GetOutput();
+    typename PatchMatch<TImage>::PMImageType* nnField = this->PatchMatchFunctor->GetOutput();
 
     ITKHelpers::WriteRGBImage(currentImage.GetPointer(), "BeforeUpdate.png");
     
@@ -284,7 +286,7 @@ void BDSInpainting<TImage>::SetResolutionLevels(const unsigned int resolutionLev
 }
 
 template <typename TImage>
-void BDSInpainting<TImage>::SetPatchMatchFunctor(const PatchMatch<TImage>& patchMatchFunctor)
+void BDSInpainting<TImage>::SetPatchMatchFunctor(PatchMatch<TImage>* patchMatchFunctor)
 {
   this->PatchMatchFunctor = patchMatchFunctor;
 }

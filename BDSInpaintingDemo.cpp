@@ -29,7 +29,10 @@
 #include "Mask/Mask.h"
 #include "ITKHelpers/ITKHelpers.h"
 #include "PatchComparison/SSD.h"
+#include "PatchMatch/PatchMatch.h"
+#include "PatchMatch/PatchMatchRings.h"
 
+// Custom
 #include "BDSInpainting.h"
 
 int main(int argc, char*argv[])
@@ -104,7 +107,8 @@ int main(int argc, char*argv[])
   ssdFunctor.SetImage(image);
 
   // Setup the PatchMatch functor
-  PatchMatch<ImageType> patchMatchFunctor;
+  //PatchMatch<ImageType> patchMatchFunctor;
+  PatchMatchRings<ImageType> patchMatchFunctor;
   patchMatchFunctor.SetPatchRadius(patchRadius);
   patchMatchFunctor.SetPatchDistanceFunctor(&ssdFunctor);
   patchMatchFunctor.SetIterations(4);
@@ -142,7 +146,7 @@ int main(int argc, char*argv[])
 
   bdsInpainting.SetDownsampleFactor(.5);
 
-  bdsInpainting.SetPatchMatchFunctor(patchMatchFunctor);
+  bdsInpainting.SetPatchMatchFunctor(&patchMatchFunctor);
   bdsInpainting.Compute();
 
   ITKHelpers::WriteRGBImage(bdsInpainting.GetOutput(), outputFilename);

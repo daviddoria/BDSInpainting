@@ -65,7 +65,7 @@ public:
   void SetResolutionLevels(const unsigned int resolutionLevels);
 
   /** Set the PatchMatch functor to use. */
-  void SetPatchMatchFunctor(const PatchMatch<TImage>& patchMatchFunctor);
+  void SetPatchMatchFunctor(PatchMatch<TImage>* patchMatchFunctor);
 
   /** Set the amount to downsample the image to construct the different resolutions. */
   void SetDownsampleFactor(const float downsampleFactor);
@@ -92,7 +92,7 @@ private:
   unsigned int PatchRadius;
 
   /** The PatchMatch functor to use. */
-  PatchMatch<TImage> PatchMatchFunctor;
+  PatchMatch<TImage>* PatchMatchFunctor;
 
   /** How much to downsample the image at each level. */
   float DownsampleFactor;
