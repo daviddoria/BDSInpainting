@@ -143,6 +143,7 @@ protected:
   typename TImage::PixelType CompositeBestPatch(
      const std::vector<typename TImage::PixelType>& contributingPixels,
      const std::vector<float>& contributingScores);
+
 };
 
 #include "BDSInpainting.hpp"

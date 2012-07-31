@@ -100,7 +100,7 @@ int main(int argc, char*argv[])
   ITKHelpers::WriteRGBImage(image, "PoissonFilled.png");
 
   // PatchMatch requires that the target region be specified by valid pixels
-  targetMask->Invert();
+  targetMask->InvertData();
 
   // Setup the patch distance functor
   SSD<ImageType> ssdFunctor;

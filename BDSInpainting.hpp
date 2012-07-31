@@ -194,6 +194,7 @@ void BDSInpainting<TImage>::Compute(TImage* const image, Mask* const sourceMask,
     this->PatchMatchFunctor->SetImage(currentImage);
     this->PatchMatchFunctor->SetSourceMask(sourceMask);
     this->PatchMatchFunctor->SetTargetMask(targetMask);
+    this->PatchMatchFunctor->SetTrustAllPixels(false);
 
     try
     {
@@ -347,10 +348,14 @@ void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
       //ITKHelpers::WriteRegion(oldImage, currentRegion, "CurrentRegion.png");
       }
 
+        // This would be used if we trusted all patches
+//       std::vector<itk::ImageRegion<2> > patchesContainingPixel =
+//             ITKHelpers::GetAllPatchesContainingPixel(currentPixel,
+//                                                      this->PatchRadius,
+//                                                      fullRegion);
+
       std::vector<itk::ImageRegion<2> > patchesContainingPixel =
-            ITKHelpers::GetAllPatchesContainingPixel(currentPixel,
-                                                     this->PatchRadius,
-                                                     fullRegion);
+            this->PatchMatchFunctor->GetTargetRegionsContainingPixel(currentPixel);
 
       // Compute the list of pixels contributing to this patch and their associated patch scores
       std::vector<typename TImage::PixelType> contributingPixels(patchesContainingPixel.size());
@@ -363,6 +368,9 @@ void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
                     ITKHelpers::GetRegionCenter(patchesContainingPixel[containingPatchId]);
         Match bestMatch = nnField->GetPixel(containingRegionCenter);
         itk::ImageRegion<2> bestMatchRegion = bestMatch.Region;
+
+        assert(fullRegion.IsInside(bestMatchRegion));
+
         itk::Index<2> bestMatchRegionCenter = ITKHelpers::GetRegionCenter(bestMatchRegion);
 
         { // debug only
@@ -378,7 +386,7 @@ void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
         //ITKHelpers::WriteRegion(oldImage, bestMatchRegion, ssMatchingRegionFile.str());
         }
 
-        //assert(sourceMask->IsValid(bestMatchRegion));
+        assert(this->SourceMask->IsValid(bestMatchRegion));
 //         std::cout << "containingRegionCenter: " << containingRegionCenter << std::endl;
 //         std::cout << "bestMatchRegionCenter: " << bestMatchRegionCenter << std::endl;
 
@@ -519,5 +527,6 @@ typename TImage::PixelType BDSInpainting<TImage>::CompositeBestPatch(
   typename TImage::PixelType newValue = contributingPixels[patchId];
   return newValue;
 }
+
 
 #endif
