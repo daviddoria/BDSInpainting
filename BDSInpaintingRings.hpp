@@ -49,19 +49,20 @@ void BDSInpaintingRings<TImage>::Compute(TImage* const image, Mask* const source
   this->PatchMatchFunctor->SetImage(image);
   this->PatchMatchFunctor->SetSourceMask(sourceMask);
   this->PatchMatchFunctor->SetTargetMask(targetMask);
-  this->PatchMatchFunctor->SetTrustAllPixels(true);
-  this->PatchMatchFunctor->RandomInit();
+  this->PatchMatchFunctor->InitKnownRegion();
 
   { // debug only
   typename PatchMatch<TImage>::CoordinateImageType::Pointer coordinateImage = PatchMatch<TImage>::CoordinateImageType::New();
   PatchMatch<TImage>::GetPatchCentersImage(this->PatchMatchFunctor->GetOutput(), coordinateImage);
   ITKHelpers::WriteImage(coordinateImage.GetPointer(), "InitializedNNField.mha");
   }
+
   // Compute the NNField in the region we are allowed to propagate from
   this->PatchMatchFunctor->SetImage(image);
   this->PatchMatchFunctor->SetSourceMask(sourceMask);
   this->PatchMatchFunctor->SetTargetMask(currentPropagationMask);
-  this->PatchMatchFunctor->SetTrustAllPixels(true);
+  this->PatchMatchFunctor->SetAllowedPropagationMask(currentPropagationMask);
+  this->PatchMatchFunctor->RandomInit();
   this->PatchMatchFunctor->Compute(this->PatchMatchFunctor->GetOutput()); // Use the field computed with the normal target region
 
   { // debug only
@@ -117,7 +118,7 @@ void BDSInpaintingRings<TImage>::Compute(TImage* const image, Mask* const source
     this->PatchMatchFunctor->SetAllowedPropagationMask(currentPropagationMask);
 
     // Compute the filling in the ring
-    BDSInpainting<TImage>::Compute(image, this->SourceMask, boundaryMask, previousNNField, filledRing);
+    BDSInpainting<TImage>::Compute(image, sourceMask, boundaryMask, previousNNField, filledRing);
 
     ITKHelpers::WriteSequentialImage(filledRing.GetPointer(), "InpaintedRing", ringCounter, 4, "png");
 

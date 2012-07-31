@@ -62,6 +62,9 @@ public:
   /** Set the patch radius. */
   void SetPatchRadius(const unsigned int patchRadius);
 
+  /** Specify whether or not we trust all pixels. */
+  void SetTrustAllPixels(const bool trustAllPixels);
+  
   /** Set the number of resolution levels to use. */
   void SetResolutionLevels(const unsigned int resolutionLevels);
 
@@ -144,6 +147,9 @@ protected:
      const std::vector<typename TImage::PixelType>& contributingPixels,
      const std::vector<float>& contributingScores);
 
+
+  /** Determine whether or not we trust all pixels. */
+  bool TrustAllPixels;
 };
 
 #include "BDSInpainting.hpp"

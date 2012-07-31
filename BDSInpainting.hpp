@@ -39,7 +39,8 @@ BDSInpainting<TImage>::BDSInpainting() : ResolutionLevels(3), Iterations(5),
                                          PatchRadius(7),
                                          PatchMatchFunctor(NULL),
                                          DownsampleFactor(.5),
-                                         CompositingMethod(WEIGHTED_AVERAGE)
+                                         CompositingMethod(WEIGHTED_AVERAGE),
+                                         TrustAllPixels(false)
 {
   this->Output = TImage::New();
   this->Image = TImage::New();
@@ -194,7 +195,6 @@ void BDSInpainting<TImage>::Compute(TImage* const image, Mask* const sourceMask,
     this->PatchMatchFunctor->SetImage(currentImage);
     this->PatchMatchFunctor->SetSourceMask(sourceMask);
     this->PatchMatchFunctor->SetTargetMask(targetMask);
-    this->PatchMatchFunctor->SetTrustAllPixels(false);
 
     try
     {
@@ -317,9 +317,6 @@ void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
   // (So there is no confusion such as "why is the mask's region used here instead of the image's?")
   itk::ImageRegion<2> fullRegion = oldImage->GetLargestPossibleRegion();
 
-  // Only iterate over this region, as it is the only region where a hole pixel can be found
-  itk::ImageRegion<2> targetBoundingBox = MaskOperations::ComputeValidBoundingBox(targetMask);
-
   // We don't want to change pixels directly on the
   // output image during the iteration, but rather compute them all and then update them all simultaneously.
   ITKHelpers::DeepCopy(oldImage, updatedImage);
@@ -330,50 +327,66 @@ void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
   typename TImage::PixelType zeroPixel = oldImage->GetPixel(zeroIndex);
   zeroPixel.Fill(0);
 
-  itk::ImageRegionIteratorWithIndex<TImage> imageIterator(updatedImage, targetBoundingBox);
-
-  unsigned int pixelCounter = 0;
-  while(!imageIterator.IsAtEnd())
+  std::vector<itk::Index<2> > targetPixels = this->TargetMask->GetValidPixels();
+  
+  for(size_t targetPixelId = 0; targetPixelId < targetPixels.size(); ++targetPixelId)
   {
-    itk::Index<2> currentPixel = imageIterator.GetIndex();
-    if(targetMask->IsValid(currentPixel)) // We have come across a pixel to be filled
+    itk::Index<2> currentPixel = targetPixels[targetPixelId];
+
+    { // debug only
+    itk::ImageRegion<2> currentRegion =
+          ITKHelpers::GetRegionInRadiusAroundPixel(currentPixel, this->PatchRadius);
+
+    //ITKHelpers::WriteRegion(oldImage, currentRegion, "CurrentRegion.png");
+    }
+
+    // Get all patches containing the currentPixel
+    std::vector<itk::ImageRegion<2> > patchesContainingPixel = ITKHelpers::GetAllPatchesContainingPixel(currentPixel,
+                                                    this->PatchRadius,
+                                                    fullRegion);
+
+    // Remove patches from the set if they are not inside the image
+    patchesContainingPixel.erase(std::remove_if(patchesContainingPixel.begin(), patchesContainingPixel.end(),
+                                                [&fullRegion](const itk::ImageRegion<2>& testRegion)
+                                                {
+                                                  return !fullRegion.IsInside(testRegion);
+                                                }),
+                                 patchesContainingPixel.end());
+
+    // If we don't trust the interior of the target region, we must cull this set by checking for patches with enough trusted pixels
+    if(!this->TrustAllPixels)
     {
+      Mask::Pointer allowedPropagationMask = Mask::New();
+      allowedPropagationMask->DeepCopyFrom(this->TargetMask);
+      allowedPropagationMask->InvertData();
+
+      patchesContainingPixel.erase(std::remove_if(patchesContainingPixel.begin(), patchesContainingPixel.end(),
+                                                [&allowedPropagationMask](const itk::ImageRegion<2>& testRegion)
+                                                {
+                                                  return !(allowedPropagationMask->CountValidPixels(testRegion) > (testRegion.GetNumberOfPixels() / 2));
+                                                }),
+                                 patchesContainingPixel.end());
+    }
+
+    assert(patchesContainingPixel.size() > 0);
+
+    // Compute the list of pixels contributing to this patch and their associated patch scores
+    std::vector<typename TImage::PixelType> contributingPixels(patchesContainingPixel.size());
+    std::vector<float> contributingScores(patchesContainingPixel.size());
+
+    for(unsigned int containingPatchId = 0;
+        containingPatchId < patchesContainingPixel.size(); ++containingPatchId)
+    {
+      itk::Index<2> containingRegionCenter =
+                  ITKHelpers::GetRegionCenter(patchesContainingPixel[containingPatchId]);
+      Match bestMatch = nnField->GetPixel(containingRegionCenter);
+      itk::ImageRegion<2> bestMatchRegion = bestMatch.Region;
+
+      //assert(fullRegion.IsInside(bestMatchRegion));
+
+      itk::Index<2> bestMatchRegionCenter = ITKHelpers::GetRegionCenter(bestMatchRegion);
 
       { // debug only
-      //std::cout << "Updating " << pixelCounter << " of "
-      //          << holeBoundingBox.GetNumberOfPixels() << std::endl;
-      itk::ImageRegion<2> currentRegion =
-            ITKHelpers::GetRegionInRadiusAroundPixel(currentPixel, this->PatchRadius);
-
-      //ITKHelpers::WriteRegion(oldImage, currentRegion, "CurrentRegion.png");
-      }
-
-        // This would be used if we trusted all patches
-//       std::vector<itk::ImageRegion<2> > patchesContainingPixel =
-//             ITKHelpers::GetAllPatchesContainingPixel(currentPixel,
-//                                                      this->PatchRadius,
-//                                                      fullRegion);
-
-      std::vector<itk::ImageRegion<2> > patchesContainingPixel =
-            this->PatchMatchFunctor->GetTargetRegionsContainingPixel(currentPixel);
-
-      // Compute the list of pixels contributing to this patch and their associated patch scores
-      std::vector<typename TImage::PixelType> contributingPixels(patchesContainingPixel.size());
-      std::vector<float> contributingScores(patchesContainingPixel.size());
-
-      for(unsigned int containingPatchId = 0;
-          containingPatchId < patchesContainingPixel.size(); ++containingPatchId)
-      {
-        itk::Index<2> containingRegionCenter =
-                    ITKHelpers::GetRegionCenter(patchesContainingPixel[containingPatchId]);
-        Match bestMatch = nnField->GetPixel(containingRegionCenter);
-        itk::ImageRegion<2> bestMatchRegion = bestMatch.Region;
-
-        assert(fullRegion.IsInside(bestMatchRegion));
-
-        itk::Index<2> bestMatchRegionCenter = ITKHelpers::GetRegionCenter(bestMatchRegion);
-
-        { // debug only
 //         std::cout << "Containing region center: " << containingRegionCenter << std::endl;
 //         std::stringstream ssContainingRegionFile;
 //         ssContainingRegionFile << "ContainingRegion_" << containingPatchId << ".png";
@@ -383,42 +396,39 @@ void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
 //         std::cout << "Matching region center: " << bestMatchRegionCenter << std::endl;
 //         std::stringstream ssMatchingRegionFile;
 //         ssMatchingRegionFile << "MatchingRegion_" << containingPatchId << ".png";
-        //ITKHelpers::WriteRegion(oldImage, bestMatchRegion, ssMatchingRegionFile.str());
-        }
+      //ITKHelpers::WriteRegion(oldImage, bestMatchRegion, ssMatchingRegionFile.str());
+      }
 
-        assert(this->SourceMask->IsValid(bestMatchRegion));
+      assert(this->SourceMask->IsValid(bestMatchRegion));
 //         std::cout << "containingRegionCenter: " << containingRegionCenter << std::endl;
 //         std::cout << "bestMatchRegionCenter: " << bestMatchRegionCenter << std::endl;
 
-        // Compute the offset of the pixel in question relative to the center of
-        // the current patch that contains the pixel
-        itk::Offset<2> offset = currentPixel - containingRegionCenter;
+      // Compute the offset of the pixel in question relative to the center of
+      // the current patch that contains the pixel
+      itk::Offset<2> offset = currentPixel - containingRegionCenter;
 
-        // Compute the location of the pixel in the best matching patch that is the
-        // same position of the pixel in question relative to the containing patch
-        itk::Index<2> correspondingPixel = bestMatchRegionCenter + offset;
+      // Compute the location of the pixel in the best matching patch that is the
+      // same position of the pixel in question relative to the containing patch
+      itk::Index<2> correspondingPixel = bestMatchRegionCenter + offset;
 
-        contributingPixels[containingPatchId] = oldImage->GetPixel(correspondingPixel);
-        contributingScores[containingPatchId] = bestMatch.Score;
+      contributingPixels[containingPatchId] = oldImage->GetPixel(correspondingPixel);
+      contributingScores[containingPatchId] = bestMatch.Score;
 
-      } // end loop over containing patches
+    } // end loop over containing patches
 
-      // Compute new pixel value
+    // Compute new pixel value
 
-      // Select a method to construct new pixel
-      //std::cout << "Compositing..." << std::endl;
-      typename TImage::PixelType newValue = Composite(contributingPixels, contributingScores);
-      //std::cout << "Done compositing." << std::endl;
+    // Select a method to construct new pixel
+    //std::cout << "Compositing..." << std::endl;
+    typename TImage::PixelType newValue = Composite(contributingPixels, contributingScores);
+    //std::cout << "Done compositing." << std::endl;
 
-      updatedImage->SetPixel(currentPixel, newValue);
+    updatedImage->SetPixel(currentPixel, newValue);
 
 //         std::cout << "Pixel was " << currentImage->GetPixel(currentPixel)
 //                   << " and is now " << updateImage->GetPixel(currentPixel) << std::endl;
-    } // end if is hole
 
-    ++imageIterator;
-    pixelCounter++;
-  } // end loop over image
+  } // end loop over all target pixels
 }
 
 template <typename TImage>
@@ -528,5 +538,11 @@ typename TImage::PixelType BDSInpainting<TImage>::CompositeBestPatch(
   return newValue;
 }
 
+
+template <typename TImage>
+void BDSInpainting<TImage>::SetTrustAllPixels(const bool trustAllPixels)
+{
+  this->TrustAllPixels = trustAllPixels;
+}
 
 #endif
