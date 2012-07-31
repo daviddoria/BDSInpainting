@@ -33,7 +33,8 @@ public:
 
   /** This function does the actual work of inpainting a single level.
     * It is called from Compute() at multiple resolutions. */
-  void Compute(TImage* const image, Mask* const sourceMask, Mask* const targetMask, TImage* const output);
+  void Compute(TImage* const image, Mask* const sourceMask, Mask* const targetMask,
+               typename PatchMatch<TImage>::PMImageType* previousNNField, TImage* const output);
 
 private:
 

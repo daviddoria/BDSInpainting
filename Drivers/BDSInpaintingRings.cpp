@@ -30,7 +30,6 @@
 #include "ITKHelpers/ITKHelpers.h"
 #include "PatchComparison/SSD.h"
 #include "PatchMatch/PatchMatch.h"
-#include "PatchMatch/PatchMatchRings.h"
 
 // Custom
 #include "BDSInpaintingRings.h"
@@ -107,12 +106,11 @@ int main(int argc, char*argv[])
   ssdFunctor.SetImage(image);
 
   // Setup the PatchMatch functor
-  //PatchMatch<ImageType> patchMatchFunctor;
-  PatchMatchRings<ImageType> patchMatchFunctor;
+  PatchMatch<ImageType> patchMatchFunctor;
   patchMatchFunctor.SetPatchRadius(patchRadius);
   patchMatchFunctor.SetPatchDistanceFunctor(&ssdFunctor);
-  patchMatchFunctor.SetIterations(1);
-  //patchMatchFunctor.SetIterations(4);
+  //patchMatchFunctor.SetIterations(1);
+  patchMatchFunctor.SetIterations(4);
   patchMatchFunctor.SetInitializationStrategy(PatchMatch<ImageType>::RANDOM);
 
   // Test the result of PatchMatch here

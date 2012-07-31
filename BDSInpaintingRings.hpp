@@ -29,72 +29,101 @@ BDSInpaintingRings<TImage>::BDSInpaintingRings() : BDSInpainting<TImage>()
 
 template <typename TImage>
 void BDSInpaintingRings<TImage>::Compute(TImage* const image, Mask* const sourceMask, Mask* const targetMask,
-                                    TImage* const output)
+                                         typename PatchMatch<TImage>::PMImageType* inputNNField, TImage* const output)
 {
-  ITKHelpers::WriteRGBImage(image, "ComputeInput.png");
+  ITKHelpers::WriteImage(this->TargetMask.GetPointer(), "OriginalTargetMask.png");
 
-  // Initialize the output with the input
-  ITKHelpers::DeepCopy(image, output);
+  // Save the original mask, as we will be modifying the internal masks below
+  Mask::Pointer currentTargetMask = Mask::New();
+  currentTargetMask->DeepCopyFrom(this->TargetMask);
 
-  // Initialize the image to operate on
-  typename TImage::Pointer currentImage = TImage::New();
-  ITKHelpers::DeepCopy(image, currentImage.GetPointer());
+  Mask::Pointer currentPropagationMask = Mask::New();
+  currentPropagationMask->DeepCopyFrom(this->TargetMask);
+  currentPropagationMask->Invert();
 
-  itk::ImageRegion<2> fullRegion = image->GetLargestPossibleRegion();
-
-  std::cout << "Computing BDS on resolution " << fullRegion.GetSize() << std::endl;
-
-  for(unsigned int iteration = 0; iteration < this->Iterations; ++iteration)
+  typename PatchMatch<TImage>::PMImageType::Pointer previousNNField = NULL;
+  if(inputNNField)
   {
-    std::cout << "BDSInpainting Iteration " << iteration << std::endl;
+    ITKHelpers::DeepCopy(inputNNField, previousNNField.GetPointer());
+  }
 
-    // Give the PatchMatch functor the data
-    this->PatchMatchFunctor->SetImage(currentImage);
-    this->PatchMatchFunctor->SetSourceMask(sourceMask);
-    this->PatchMatchFunctor->SetTargetMask(targetMask);
+  unsigned int ringCounter = 0;
+  typename TImage::Pointer filledRing = TImage::New();
 
-    try
+  while(currentTargetMask->HasValidPixels())
+  {
     {
-      if(iteration == 0)
-      {
-        this->PatchMatchFunctor->Compute(NULL);
-      }
-      else
-      {
-        // For now don't initialize with the previous NN field - though this
-        // might work and be a huge speed up.
-        this->PatchMatchFunctor->Compute(NULL);
-        //this->PatchMatchFunctor.Compute(init);
-      }
-    }
-    catch (std::runtime_error &e)
-    {
-      std::cout << e.what() << std::endl;
-      return;
+    std::stringstream ssCurrentTargetMask;
+    ssCurrentTargetMask << "CurrentTargetMask_" << Helpers::ZeroPad(ringCounter, 4) << ".png";
+    ITKHelpers::WriteImage(currentTargetMask.GetPointer(), ssCurrentTargetMask.str());
     }
 
-    typename PatchMatch<TImage>::PMImageType* nnField = this->PatchMatchFunctor->GetOutput();
+    // Get the outside boundary of the target region
+    Mask::BoundaryImageType::Pointer boundaryImage = Mask::BoundaryImageType::New();
+    Mask::BoundaryImageType::PixelType boundaryColor = 255;
+    currentTargetMask->FindBoundary(boundaryImage, Mask::HOLE, boundaryColor);
 
-    ITKHelpers::WriteRGBImage(currentImage.GetPointer(), "BeforeUpdate.png");
+//     {
+//     std::stringstream ssBoundary;
+//     ssBoundary << "Boundary_" << Helpers::ZeroPad(ringCounter, 4) << ".png";
+//     ITKHelpers::WriteImage(boundaryImage.GetPointer(), ssBoundary.str());
+//     }
 
-    // Update the target pixels
-    typename TImage::Pointer updatedImage = TImage::New();
-    //std::cout << "Updating pixels..." << std::endl;
-    UpdatePixels(currentImage, targetMask, nnField, updatedImage);
-    //std::cout << "Done updating pixels." << std::endl;
-    ITKHelpers::WriteRGBImage(updatedImage.GetPointer(), "Updated.png");
-    ITKHelpers::WriteRGBImage(currentImage.GetPointer(), "Current.png");
+    // Create a mask of just the boundary
+    Mask::Pointer boundaryMask = Mask::New();
+    Mask::BoundaryImageType::PixelType holeColor = boundaryColor;
+    boundaryMask->CreateFromImage(boundaryImage.GetPointer(), holeColor);
+    boundaryMask->Invert(); // Make the thin boundary the only valid pixels
 
-    MaskOperations::CopyInValidRegion(updatedImage.GetPointer(), currentImage.GetPointer(), targetMask);
+//     { // debug only
+//     std::stringstream ssBoundaryMask;
+//     ssBoundaryMask << "BoundaryMask_" << Helpers::ZeroPad(ringCounter, 4) << ".png";
+//     ITKHelpers::WriteImage(boundaryImage.GetPointer(), ssBoundaryMask.str());
+//     }
 
-    std::stringstream ssPNG;
-    ssPNG << "BDS_Iteration_" << Helpers::ZeroPad(iteration, 2) << ".png";
-    ITKHelpers::WriteRGBImage(currentImage.GetPointer(), ssPNG.str());
-  } // end iterations loop
+    // Set the mask to use in the PatchMatch algorithm
+    this->TargetMask->DeepCopyFrom(boundaryMask);
 
-  ITKHelpers::DeepCopy(currentImage.GetPointer(), output);
+    this->PatchMatchFunctor->SetAllowedPropagationMask(currentPropagationMask);
+    // Compute the filling in the ring
+    BDSInpainting<TImage>::Compute(image, this->SourceMask, boundaryMask, previousNNField, filledRing);
 
-  ITKHelpers::WriteRGBImage(output, "ComputeOutput.png");
+    { // debug only
+    std::stringstream ssInpaintedRing;
+    ssInpaintedRing << "InpaintedRing_" << Helpers::ZeroPad(ringCounter, 4) << ".png";
+    ITKHelpers::WriteImage(filledRing.GetPointer(), ssInpaintedRing.str());
+    }
+
+    { // debug only
+    typename PatchMatch<TImage>::CoordinateImageType::Pointer coordinateImage = PatchMatch<TImage>::CoordinateImageType::New();
+    PatchMatch<TImage>::GetPatchCentersImage(this->PatchMatchFunctor->GetOutput(), coordinateImage);
+    std::stringstream ssOutput;
+    ssOutput << "NNField_" << Helpers::ZeroPad(ringCounter, 3) << ".mha";
+    ITKHelpers::WriteImage(coordinateImage.GetPointer(), ssOutput.str());
+    }
+
+    // Copy the filled ring into the image for the next iteration
+    ITKHelpers::DeepCopy(filledRing.GetPointer(), image);
+
+    // Reduce the size of the target region (we "enlarge the hole", because the "hole" is considered the valid part of the target mask)
+    unsigned int kernelRadius = 1;
+    currentTargetMask->ExpandHole(kernelRadius);
+
+    currentPropagationMask->DeepCopyFrom(currentTargetMask);
+    currentPropagationMask->Invert();
+
+    if(!previousNNField)
+    {
+      previousNNField = PatchMatch<TImage>::PMImageType::New();
+    }
+
+    ITKHelpers::DeepCopy(this->PatchMatchFunctor->GetOutput(), previousNNField.GetPointer());
+    this->PatchMatchFunctor->SetAllowedPropagationMask(currentTargetMask);
+    ringCounter++;
+  }
+
+  ITKHelpers::DeepCopy(filledRing.GetPointer(), output);
+
 }
 
 #endif

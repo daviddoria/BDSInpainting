@@ -127,7 +127,7 @@ void BDSInpainting<TImage>::Inpaint()
               << imageLevels[level]->GetLargestPossibleRegion().GetSize() << ")" << std::endl;
     typename TImage::Pointer output = TImage::New();
     Compute(imageLevels[level].GetPointer(), sourceMaskLevels[level].GetPointer(),
-            targetMaskLevels[level].GetPointer(), output);
+            targetMaskLevels[level].GetPointer(), NULL, output);
 
     { // Debug only
     std::stringstream ss;
@@ -170,6 +170,7 @@ void BDSInpainting<TImage>::Inpaint()
 
 template <typename TImage>
 void BDSInpainting<TImage>::Compute(TImage* const image, Mask* const sourceMask, Mask* const targetMask,
+                                    typename PatchMatch<TImage>::PMImageType* previousNNField,
                                     TImage* const output)
 {
   ITKHelpers::WriteRGBImage(image, "ComputeInput.png");
