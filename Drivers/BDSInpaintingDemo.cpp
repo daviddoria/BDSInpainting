@@ -26,11 +26,11 @@
 #include "itkCovariantVector.h"
 
 // Submodules
-#include "Mask/Mask.h"
-#include "ITKHelpers/ITKHelpers.h"
-#include "PatchComparison/SSD.h"
-#include "PatchMatch/PatchMatch.h"
-#include "PatchMatch/PatchMatchRings.h"
+#include <Mask/Mask.h>
+#include <ITKHelpers/ITKHelpers.h>
+#include <PatchComparison/SSD.h>
+#include <PatchMatch/PatchMatch.h>
+#include <PatchMatch/PatchMatchRings.h>
 
 // Custom
 #include "BDSInpainting.h"

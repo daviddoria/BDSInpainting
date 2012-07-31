@@ -1,10 +1,9 @@
 cmake_minimum_required(VERSION 2.6)
 
 PROJECT(BDSInpainting)
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=gnu++0x")
 
-# Eigen
-#include_directories(/media/portable/src/Eigen)
+# Enable C++11
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=gnu++0x")
 
 # ITK
 FIND_PACKAGE(ITK REQUIRED ITKCommon ITKIOImageBase ITKDistanceMap ITKIOPNG ITKIOMeta
@@ -30,9 +29,11 @@ endif()
 
 # Create a library
 add_custom_target(BDSInpainting BDSInpainting.hpp)
-#target_link_libraries(BDSInpainting Mask PatchComparison)
 
 SET(BDSInpainting_BuildDrivers ON CACHE BOOL "Build BDSInpainting drivers?")
 if(BDSInpainting_BuildDrivers)
  add_subdirectory(Drivers)
 endif()
+
+# GET_DIRECTORY_PROPERTY(AllIncludes INCLUDE_DIRECTORIES)
+# message("Final include directories: ${AllIncludes}")

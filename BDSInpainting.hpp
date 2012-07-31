@@ -22,11 +22,11 @@
 #include "BDSInpainting.h"
 
 // Submodules
-#include "ITKHelpers/ITKHelpers.h"
-#include "Mask/MaskOperations.h"
-#include "PatchMatch/PatchMatch.h"
-#include "PatchComparison/SSD.h"
-#include "PoissonEditing/PoissonEditing.h"
+#include <ITKHelpers/ITKHelpers.h>
+#include <Mask/MaskOperations.h>
+#include <PatchMatch/PatchMatch.h>
+#include <PatchComparison/SSD.h>
+#include <PoissonEditing/PoissonEditing.h>
 
 // ITK
 #include "itkImageRegionReverseIterator.h"
