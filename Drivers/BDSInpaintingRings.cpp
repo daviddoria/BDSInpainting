@@ -109,8 +109,7 @@ int main(int argc, char*argv[])
   PatchMatch<ImageType> patchMatchFunctor;
   patchMatchFunctor.SetPatchRadius(patchRadius);
   patchMatchFunctor.SetPatchDistanceFunctor(&ssdFunctor);
-  patchMatchFunctor.SetIterations(1);
-  //patchMatchFunctor.SetIterations(4);
+  patchMatchFunctor.SetIterations(20);
   patchMatchFunctor.SetInitializationStrategy(PatchMatch<ImageType>::RANDOM);
 
   // Test the result of PatchMatch here

@@ -195,6 +195,7 @@ void BDSInpainting<TImage>::Compute(TImage* const image, Mask* const sourceMask,
     this->PatchMatchFunctor->SetImage(currentImage);
     this->PatchMatchFunctor->SetSourceMask(sourceMask);
     this->PatchMatchFunctor->SetTargetMask(targetMask);
+    this->PatchMatchFunctor->RandomInit();
 
     try
     {
@@ -331,9 +332,12 @@ void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
 
   std::vector<itk::Index<2> > targetPixels = targetMask->GetValidPixels();
   std::cout << "UpdatePixels: There are : " << targetPixels.size() << " target pixels." << std::endl;
+
+  this->PatchMatchFunctor->WriteValidPixels("ValidNNPixels.png");
+
   for(size_t targetPixelId = 0; targetPixelId < targetPixels.size(); ++targetPixelId)
   {
-    std::cout << "Processing " << targetPixelId << " of " << targetPixels.size() << std::endl;
+    //std::cout << "Processing " << targetPixelId << " of " << targetPixels.size() << std::endl;
     itk::Index<2> currentPixel = targetPixels[targetPixelId];
 
     { // debug only
@@ -348,18 +352,15 @@ void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
                                                     this->PatchRadius,
                                                     fullRegion);
 
-    // Remove patches from the set if they are not inside the image
-    patchesContainingPixel.erase(std::remove_if(patchesContainingPixel.begin(), patchesContainingPixel.end(),
-                                                [&fullRegion](const itk::ImageRegion<2>& testRegion)
-                                                {
-                                                  return !fullRegion.IsInside(testRegion);
-                                                }),
-                                 patchesContainingPixel.end());
+    // Remove patches from the set if they are not inside the image (this should automatically be the case if the NNField has a valid pixel)
+//     patchesContainingPixel.erase(std::remove_if(patchesContainingPixel.begin(), patchesContainingPixel.end(),
+//                                                 [&fullRegion](const itk::ImageRegion<2>& testRegion)
+//                                                 {
+//                                                   return !fullRegion.IsInside(testRegion);
+//                                                 }),
+//                                  patchesContainingPixel.end());
 
-    // If we don't trust the interior of the target region, we must cull this set by checking for patches with enough trusted pixels
-    if(!this->TrustAllPixels)
-    {
-      ITKHelpers::WriteImage(this->PatchMatchFunctor->GetAllowedPropagationMask(), "UpdatePixels_PropagationMask.png");
+    //ITKHelpers::WriteImage(this->PatchMatchFunctor->GetAllowedPropagationMask(), "UpdatePixels_PropagationMask.png");
 
 
     // Remove patches from the set if they have invalid NNField values
@@ -375,7 +376,7 @@ void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
                                                   return !valid;
                                                 }),
                                  patchesContainingPixel.end());
-
+    // std::cout << "Deleted regions." << std::endl;
     // The following doesn't make sense because even if the patch has enough "propagation allowed" pixels, doesn't mean it has a valid NN and hence the corresponding pixel
     // can't be used in the compositing
 //       patchesContainingPixel.erase(std::remove_if(patchesContainingPixel.begin(), patchesContainingPixel.end(),
@@ -391,14 +392,10 @@ void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
 //                                     return false;
 //                                   }),
 //                                  patchesContainingPixel.end());
-    }
 
-
-    std::cout << patchesContainingPixel.size() << " patchesContainingPixel remain." << std::endl;
-    ITKHelpers::HighlightAndWriteRegions(targetMask->GetLargestPossibleRegion().GetSize(), patchesContainingPixel,
-                                         "PatchesContainingPixel.png");
-
-    this->PatchMatchFunctor->WriteValidPixels("ValidNNPixels.png");
+    //std::cout << patchesContainingPixel.size() << " patchesContainingPixel remain." << std::endl;
+//     ITKHelpers::HighlightAndWriteRegions(targetMask->GetLargestPossibleRegion().GetSize(), patchesContainingPixel,
+//                                          "PatchesContainingPixel.png");
 
     assert(patchesContainingPixel.size() > 0);
 
@@ -412,28 +409,15 @@ void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
       itk::Index<2> containingRegionCenter =
                   ITKHelpers::GetRegionCenter(patchesContainingPixel[containingPatchId]);
       Match bestMatch = nnField->GetPixel(containingRegionCenter);
+      assert(bestMatch.IsValid());
+
       itk::ImageRegion<2> bestMatchRegion = bestMatch.Region;
 
       //assert(fullRegion.IsInside(bestMatchRegion));
 
       itk::Index<2> bestMatchRegionCenter = ITKHelpers::GetRegionCenter(bestMatchRegion);
 
-      { // debug only
-//         std::cout << "Containing region center: " << containingRegionCenter << std::endl;
-//         std::stringstream ssContainingRegionFile;
-//         ssContainingRegionFile << "ContainingRegion_" << containingPatchId << ".png";
-//         ITKHelpers::WriteRegion(oldImage, patchesContainingPixel[containingPatchId],
-//                                 ssContainingRegionFile.str());
-
-//         std::cout << "Matching region center: " << bestMatchRegionCenter << std::endl;
-//         std::stringstream ssMatchingRegionFile;
-//         ssMatchingRegionFile << "MatchingRegion_" << containingPatchId << ".png";
-      //ITKHelpers::WriteRegion(oldImage, bestMatchRegion, ssMatchingRegionFile.str());
-      }
-
       assert(this->SourceMask->IsValid(bestMatchRegion));
-//         std::cout << "containingRegionCenter: " << containingRegionCenter << std::endl;
-//         std::cout << "bestMatchRegionCenter: " << bestMatchRegionCenter << std::endl;
 
       // Compute the offset of the pixel in question relative to the center of
       // the current patch that contains the pixel
@@ -444,16 +428,12 @@ void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
       itk::Index<2> correspondingPixel = bestMatchRegionCenter + offset;
 
       contributingPixels[containingPatchId] = oldImage->GetPixel(correspondingPixel);
-      if(!bestMatch.IsValid())
-      {
-        std::stringstream ss;
-        ss << "Invalid patch!" << bestMatch.Region << " " << ITKHelpers::GetRegionCenter(bestMatch.Region);
-        throw std::runtime_error(ss.str());
-      }
+
       contributingScores[containingPatchId] = bestMatch.Score;
 
     } // end loop over containing patches
 
+    //std::cout << "Collected contributing pixels and scores." << std::endl;
     // Compute new pixel value
 
     // Select a method to construct new pixel
