@@ -28,6 +28,7 @@ endif()
 if(NOT ${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR})
   set(BDSInpainting_includes ${BDSInpainting_includes}
       ${CMAKE_CURRENT_SOURCE_DIR} PARENT_SCOPE)
+  set(BDSInpainting_libraries ${BDSInpainting_libraries} PARENT_SCOPE)
 endif()
 
 # Create a library
