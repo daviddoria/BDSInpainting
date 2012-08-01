@@ -363,11 +363,19 @@ void BDSInpainting<TImage>::UpdatePixels(const TImage* const oldImage,
       patchesContainingPixel.erase(std::remove_if(patchesContainingPixel.begin(), patchesContainingPixel.end(),
                                                 [&allowedPropagationMask](const itk::ImageRegion<2>& testRegion)
                                                 {
-                                                  return !(allowedPropagationMask->CountValidPixels(testRegion) > (testRegion.GetNumberOfPixels() / 2));
+                                                  unsigned int numberOfValidPixels = allowedPropagationMask->CountValidPixels(testRegion);
+                                                  std::cout << "numberOfValidPixels: " << numberOfValidPixels << std::endl;
+                                                  if(numberOfValidPixels < (testRegion.GetNumberOfPixels() / 2))
+                                                  {
+                                                    return true; // Delete the patches that have less than the acceptable number of valid pixels
+                                                  }
+                                                  return false;
                                                 }),
                                  patchesContainingPixel.end());
     }
 
+    ITKHelpers::HighlightAndWriteRegions(this->TargetMask->GetLargestPossibleRegion().GetSize(), patchesContainingPixel,
+                                         "PatchesContainingPixel.png");
     assert(patchesContainingPixel.size() > 0);
 
     // Compute the list of pixels contributing to this patch and their associated patch scores

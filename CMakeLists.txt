@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 2.6)
 
 PROJECT(BDSInpainting)
+SET(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 # Enable C++11
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=gnu++0x")
@@ -14,16 +15,18 @@ INCLUDE(${USE_ITK_FILE})
 if(NOT TARGET PatchMatch)
   add_subdirectory(PatchMatch)
   include_directories(${PatchMatch_includes})
+  set(BDSInpainting_includes ${BDSInpainting_includes} ${PatchMatch_includes})
 endif()
 
 if(NOT TARGET PoissonEditing)
   add_subdirectory(PoissonEditing)
   include_directories(${PoissonEditing_includes})
+  set(BDSInpainting_includes ${BDSInpainting_includes} ${PoissonEditing_includes})
 endif()
 
 # Allow super-projects to use all of the includes we can use here.
 if(NOT ${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR})
-  set(BDSInpainting_includes ${PatchMatch_includes}
+  set(BDSInpainting_includes ${BDSInpainting_includes}
       ${CMAKE_CURRENT_SOURCE_DIR} PARENT_SCOPE)
 endif()
 
@@ -35,5 +38,5 @@ if(BDSInpainting_BuildDrivers)
  add_subdirectory(Drivers)
 endif()
 
-# GET_DIRECTORY_PROPERTY(AllIncludes INCLUDE_DIRECTORIES)
-# message("Final include directories: ${AllIncludes}")
+GET_DIRECTORY_PROPERTY(AllBDSInpaintingIncludes INCLUDE_DIRECTORIES)
+message("BDSInpainting include directories: ${AllBDSInpaintingIncludes}")

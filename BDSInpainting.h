@@ -26,8 +26,8 @@
 #include "itkVectorImage.h"
 
 // Submodules
-#include "Mask/Mask.h"
-#include "PatchMatch/PatchMatch.h"
+#include <Mask/Mask.h>
+#include <PatchMatch/PatchMatch.h>
 
 /** This class uses PatchMatch to compute the nearest neighbor field, and then the
  *  coherence term from Bidirectional Similarity to perform inpainting. */
