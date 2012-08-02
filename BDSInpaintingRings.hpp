@@ -33,7 +33,7 @@ void BDSInpaintingRings<TImage>::Compute(TImage* const image, Mask* const source
 {
   ITKHelpers::WriteImage(targetMask, "OriginalTargetMask.png");
 
-  std::cout << "Target mask: " << std::endl; targetMask->OutputMembers(); // Debug only
+  //std::cout << "Target mask: " << std::endl; targetMask->OutputMembers(); // Debug only
 
   // Save the original mask, as we will be modifying the internal masks below
   Mask::Pointer currentTargetMask = Mask::New();
@@ -58,11 +58,11 @@ void BDSInpaintingRings<TImage>::Compute(TImage* const image, Mask* const source
   }
 
   // Compute the NNField in the region we are allowed to propagate from
-  this->PatchMatchFunctor->SetImage(image);
-  this->PatchMatchFunctor->SetSourceMask(sourceMask);
   this->PatchMatchFunctor->SetTargetMask(currentPropagationMask);
   this->PatchMatchFunctor->SetAllowedPropagationMask(currentPropagationMask);
-  this->PatchMatchFunctor->RandomInit();
+  //this->PatchMatchFunctor->RandomInit();
+  //this->PatchMatchFunctor->BoundaryInit();
+  this->PatchMatchFunctor->RandomInitWithHistogramTest();
   this->PatchMatchFunctor->Compute(this->PatchMatchFunctor->GetOutput()); // Use the field computed with the normal target region
 
   { // debug only
@@ -86,14 +86,14 @@ void BDSInpaintingRings<TImage>::Compute(TImage* const image, Mask* const source
 
   while(currentTargetMask->HasValidPixels())
   {
-    ITKHelpers::WriteSequentialImage(currentTargetMask.GetPointer(), "BDSRings_CurrentTargetMask", ringCounter, 4, "png");
+    //ITKHelpers::WriteSequentialImage(currentTargetMask.GetPointer(), "BDSRings_CurrentTargetMask", ringCounter, 4, "png");
 
     // We trust the information everywhere except in the hole
     currentPropagationMask->DeepCopyFrom(currentTargetMask);
     currentPropagationMask->InvertData();
-    std::cout << "Propagation mask: " << std::endl; currentPropagationMask->OutputMembers(); // Debug only
+    //std::cout << "Propagation mask: " << std::endl; currentPropagationMask->OutputMembers(); // Debug only
 
-    ITKHelpers::WriteSequentialImage(currentPropagationMask.GetPointer(), "BDSRings_CurrentPropagationMask", ringCounter, 4, "png");
+    //ITKHelpers::WriteSequentialImage(currentPropagationMask.GetPointer(), "BDSRings_CurrentPropagationMask", ringCounter, 4, "png");
 
     // Get the inside boundary of the target region
     Mask::BoundaryImageType::Pointer boundaryImage = Mask::BoundaryImageType::New();
@@ -109,8 +109,8 @@ void BDSInpaintingRings<TImage>::Compute(TImage* const image, Mask* const source
     boundaryMask->CreateFromImage(boundaryImage.GetPointer(), holeValue, validValue);
     //boundaryMask->Invert(); // Make the thin boundary the only valid pixels in the mask
 
-    std::cout << "Boundary mask: " << std::endl; boundaryMask->OutputMembers(); // Debug only
-    ITKHelpers::WriteSequentialImage(boundaryMask.GetPointer(), "BDSRings_BoundaryMask", ringCounter, 4, "png");
+    //std::cout << "Boundary mask: " << std::endl; boundaryMask->OutputMembers(); // Debug only
+    //ITKHelpers::WriteSequentialImage(boundaryMask.GetPointer(), "BDSRings_BoundaryMask", ringCounter, 4, "png");
 
     // Set the mask to use in the PatchMatch algorithm
     this->TargetMask->DeepCopyFrom(boundaryMask);
