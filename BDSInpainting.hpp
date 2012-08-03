@@ -195,9 +195,7 @@ void BDSInpainting<TImage>::Compute(TImage* const image, Mask* const sourceMask,
     this->PatchMatchFunctor->SetImage(currentImage);
     this->PatchMatchFunctor->SetSourceMask(sourceMask);
     this->PatchMatchFunctor->SetTargetMask(targetMask);
-    //this->PatchMatchFunctor->RandomInit();
-    this->PatchMatchFunctor->RandomInitWithHistogramTest();
-    //this->PatchMatchFunctor->BoundaryInit();
+    this->PatchMatchFunctor->Initialize();
 
     try
     {

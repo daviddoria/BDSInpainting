@@ -28,6 +28,10 @@ class BDSInpaintingRings : public BDSInpainting<TImage>
 {
 public:
 
+  typedef BDSInpainting<TImage> Superclass;
+  // Inherited typedefs
+  typedef typename Superclass::PatchMatchFunctorType PatchMatchFunctorType;
+
   /** Constructor. */
   BDSInpaintingRings();
 

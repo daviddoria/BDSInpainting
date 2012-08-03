@@ -54,21 +54,25 @@ void BDSInpaintingRings<TImage>::Compute(TImage* const image, Mask* const source
   { // debug only
   typename PatchMatch<TImage>::CoordinateImageType::Pointer coordinateImage = PatchMatch<TImage>::CoordinateImageType::New();
   PatchMatch<TImage>::GetPatchCentersImage(this->PatchMatchFunctor->GetOutput(), coordinateImage);
-  ITKHelpers::WriteImage(coordinateImage.GetPointer(), "InitializedNNField.mha");
+  ITKHelpers::WriteImage(coordinateImage.GetPointer(), "NNField_KnownRegionInitialized.mha");
   }
 
+  this->PatchMatchFunctor->SetAddIfBetterStrategy(PatchMatchFunctorType::NEIGHBOR_HISTOGRAM);
+  //this->PatchMatchFunctor->SetInitializationStrategy(PatchMatchFunctorType::RANDOM_WITH_HISTOGRAM);
+  //this->PatchMatchFunctor->SetInitializationStrategy(PatchMatchFunctorType::RANDOM_WITH_HISTOGRAM_NEIGHBOR);
+  this->PatchMatchFunctor->SetInitializationStrategy(PatchMatchFunctorType::RANDOM);
+  
   // Compute the NNField in the region we are allowed to propagate from
   this->PatchMatchFunctor->SetTargetMask(currentPropagationMask);
   this->PatchMatchFunctor->SetAllowedPropagationMask(currentPropagationMask);
-  //this->PatchMatchFunctor->RandomInit();
-  //this->PatchMatchFunctor->BoundaryInit();
-  this->PatchMatchFunctor->RandomInitWithHistogramTest();
+  this->PatchMatchFunctor->Initialize();
+  this->PatchMatchFunctor->SetPropagationStrategy(PatchMatchFunctorType::UNIFORM);
   this->PatchMatchFunctor->Compute(this->PatchMatchFunctor->GetOutput()); // Use the field computed with the normal target region
 
   { // debug only
   typename PatchMatch<TImage>::CoordinateImageType::Pointer coordinateImage = PatchMatch<TImage>::CoordinateImageType::New();
   PatchMatch<TImage>::GetPatchCentersImage(this->PatchMatchFunctor->GetOutput(), coordinateImage);
-  ITKHelpers::WriteImage(coordinateImage.GetPointer(), "OriginalNNField.mha");
+  ITKHelpers::WriteImage(coordinateImage.GetPointer(), "Initialized_NNField.mha");
   }
   // Use a NULL previous field unless one has been provided. We have to
   // create this as a smart pointer because if the inputNNField pointer is NULL,
@@ -116,9 +120,10 @@ void BDSInpaintingRings<TImage>::Compute(TImage* const image, Mask* const source
     this->TargetMask->DeepCopyFrom(boundaryMask);
 
     this->PatchMatchFunctor->SetAllowedPropagationMask(currentPropagationMask);
+    this->PatchMatchFunctor->SetPropagationStrategy(PatchMatchFunctorType::INWARD);
 
     // Compute the filling in the ring
-    BDSInpainting<TImage>::Compute(image, sourceMask, boundaryMask, previousNNField, filledRing);
+    Superclass::Compute(image, sourceMask, boundaryMask, previousNNField, filledRing);
 
     ITKHelpers::WriteSequentialImage(filledRing.GetPointer(), "BDSRings_InpaintedRing", ringCounter, 4, "png");
 

@@ -39,6 +39,8 @@ public:
   /** Constructor. */
   BDSInpainting();
 
+  typedef PatchMatch<TImage> PatchMatchFunctorType;
+
   /** Choices of compositing method. */
   enum CompositingMethodEnum {BEST_PATCH, WEIGHTED_AVERAGE, AVERAGE, CLOSEST_TO_AVERAGE};
 
@@ -51,7 +53,7 @@ public:
   /** This function does the actual work of inpainting a single level.
     * It is called from Compute() at multiple resolutions. */
   virtual void Compute(TImage* const image, Mask* const sourceMask, Mask* const targetMask,
-                       typename PatchMatch<TImage>::PMImageType* previousNNField, TImage* const output);
+                       typename PatchMatchFunctorType::PMImageType* previousNNField, TImage* const output);
 
   /** Get the resulting inpainted image. */
   TImage* GetOutput();
@@ -69,7 +71,7 @@ public:
   void SetResolutionLevels(const unsigned int resolutionLevels);
 
   /** Set the PatchMatch functor to use. */
-  void SetPatchMatchFunctor(PatchMatch<TImage>* patchMatchFunctor);
+  void SetPatchMatchFunctor(PatchMatchFunctorType* patchMatchFunctor);
 
   /** Set the amount to downsample the image to construct the different resolutions. */
   void SetDownsampleFactor(const float downsampleFactor);
@@ -96,7 +98,7 @@ protected:
   unsigned int PatchRadius;
 
   /** The PatchMatch functor to use. */
-  PatchMatch<TImage>* PatchMatchFunctor;
+  PatchMatchFunctorType* PatchMatchFunctor;
 
   /** How much to downsample the image at each level. */
   float DownsampleFactor;
