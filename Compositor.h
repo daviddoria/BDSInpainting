@@ -16,8 +16,8 @@
  *
  *=========================================================================*/
 
-#ifndef BDSInpainting_H
-#define BDSInpainting_H
+#ifndef Compositor_H
+#define Compositor_H
 
 // ITK
 #include "itkCovariantVector.h"
@@ -27,36 +27,34 @@
 
 // Submodules
 #include <Mask/Mask.h>
-#include <PatchMatch/PatchMatch.h>
-#include <Compositor.h>
 
 /** This class takes a nearest neighbor field and a target mask and
-  * uses the coherence term from the paper "Bidirectional Similarity" to perform inpainting.
-  * By optionally using more than 1 iteration, the inpainting quality should improve. */
+  * fills the valid pixels in the target mask using one of the specified strategies. */
 template <typename TImage>
-class BDSInpainting
+class Compositor
 {
 public:
 
   /** Constructor. */
-  BDSInpainting();
-
-  typedef PatchMatch<TImage> PatchMatchFunctorType;
+  Compositor();
 
   /** Choices of compositing method. */
   enum CompositingMethodEnum {BEST_PATCH, WEIGHTED_AVERAGE, AVERAGE, CLOSEST_TO_AVERAGE};
 
   /** Set the compositing method to use. */
-  void SetCompositor(Compositor<TImage>* compositor);
+  void SetCompositingMethod(const CompositingMethodEnum& compositingMethod);
 
-  /** Compute the nn-field for the target pixels and then composite the patches.*/
-  void Inpaint();
+  typedef itk::Image<Match, 2> NNFieldType;
+
+  /** Set the nearest neighbor field to use. */
+  void SetNearestNeighborField(NNFieldType* const nnField);
+
+  /** Using the provided NearestNeighborField, compute new values for the hole pixels
+    * in the TargetMask. */
+  void Compute();
 
   /** Get the resulting inpainted image. */
   TImage* GetOutput();
-
-  /** Set the number of iterations to run. */
-  void SetIterations(const unsigned int iterations);
 
   /** Set the patch radius. */
   void SetPatchRadius(const unsigned int patchRadius);
@@ -64,20 +62,10 @@ public:
   /** Set the image to fill. */
   void SetImage(TImage* const image);
 
-  /** Set the PatchMatch functor to use. */
-  void SetPatchMatchFunctor(PatchMatchFunctorType* patchMatchFunctor);
-
-  /** Set the mask that indicates where to take source patches from. Source patches
-    * are patches that are entirely in the Valid region.*/
-  void SetSourceMask(Mask* const mask);
-
   /** Set the mask that indicates where to fill the image. Pixels in the Hole region should be filled.*/
   void SetTargetMask(Mask* const mask);
 
 protected:
-
-  /** The number of iterations to run. */
-  unsigned int Iterations;
 
   /** The radius of the patches to use for inpainting. */
   unsigned int PatchRadius;
@@ -91,19 +79,37 @@ protected:
   /** The mask where Hole pixels indicate the pixels to fill. */
   Mask::Pointer TargetMask;
 
-  /** The mask where fully 'valid' patches are allowed to be matches. */
-  Mask::Pointer SourceMask;
-  
   /** The compositing method to use. */
   CompositingMethodEnum CompositingMethod;
 
-  /** The PatchMatch functor to use. */
-  PatchMatchFunctorType* PatchMatchFunctor;
+  /** Composite using the specified CompositingMethod. */
+  typename TImage::PixelType Composite(
+     const std::vector<typename TImage::PixelType>& contributingPixels,
+     const std::vector<float>& contributingScores);
 
-  /** The compositor to use. */
-  Compositor<TImage>* CompositorFunctor;
+  /** Composite by averaging pixels. */
+  typename TImage::PixelType CompositeAverage(
+    const std::vector<typename TImage::PixelType>& contributingPixels);
+
+  /** Composite by weighted averaging. */
+  typename TImage::PixelType CompositeWeightedAverage(
+     const std::vector<typename TImage::PixelType>& contributingPixels,
+     const std::vector<float>& contributingScores);
+
+  /** Composite by choosing the pixel closest to the average. */
+  typename TImage::PixelType CompositeClosestToAverage(
+     const std::vector<typename TImage::PixelType>& contributingPixels,
+     const std::vector<float>& contributingScores);
+
+  /** Composite by choosing the pixel from the best patch. */
+  typename TImage::PixelType CompositeBestPatch(
+     const std::vector<typename TImage::PixelType>& contributingPixels,
+     const std::vector<float>& contributingScores);
+
+  /** The nearest neighbor field to use. */
+  NNFieldType* NearestNeighborField;
 };
 
-#include "BDSInpainting.hpp"
+#include "Compositor.hpp"
 
 #endif

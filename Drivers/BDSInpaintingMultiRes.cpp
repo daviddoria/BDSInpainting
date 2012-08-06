@@ -30,11 +30,11 @@
 #include <ITKHelpers/ITKHelpers.h>
 #include <PatchComparison/SSD.h>
 #include <PatchMatch/PatchMatch.h>
+#include <PatchMatch/InitializerRandom.h>
 
 // Custom
-#include "BDSInpaintingRings.h"
-#include "AcceptanceTestNeighborHistogram.h"
-#include "InitializerRandom.h"
+#include "BDSInpaintingMultiRes.h"
+#include "Compositor.h"
 
 int main(int argc, char*argv[])
 {
@@ -108,34 +108,28 @@ int main(int argc, char*argv[])
   ssdFunctor.SetImage(image);
 
   // Setup the PatchMatch functor
-  PatchMatch<ImageType> patchMatchFunctor;
+  //PatchMatch<ImageType> patchMatchFunctor;
+  PatchMatchRings<ImageType> patchMatchFunctor;
   patchMatchFunctor.SetPatchRadius(patchRadius);
   patchMatchFunctor.SetPatchDistanceFunctor(&ssdFunctor);
-  patchMatchFunctor.SetIterations(5);
+  patchMatchFunctor.SetIterations(1);
 
-  // No need to setup the initializer here - it will be setup inside BDSInpaintingRings because
-  // the data needs to change during the iterations
+  InitializerRandom<ImageType> initializer;
+  initializer.SetImage(image);
+  initializer.SetTargetMask(targetMask);
+  initializer.SetSourceMask(sourceMask);
+  initializer.SetPatchDistanceFunctor(&ssdFunctor);
+  initializer.SetPatchRadius(patchRadius);
+  patchMatchFunctor.SetInitializer(&initializer);
 
-//   InitializerRandom<ImageType> initializer;
-//   InitializerRandom<ImageType> initializer(image, patchRadius);
-//   initializer.SetTargetMask(targetMask);
-//   initializer.SetSourceMask(sourceMask);
-//   initializer.SetPatchDistanceFunctor(ssdFunctor);
-
-  // Actually we don't need this either, because we can just create it internally (in BDSInpainting*)
-//   InitializerRandom<ImageType> initializer;
-//   patchMatchFunctor.SetInitializer(&initializer);
-//   patchMatchFunctor.Initialize();
-
-  // Set acceptance test to histogram threshold
-  AcceptanceTestNeighborHistogram<ImageType> acceptanceTest;
-  patchMatchFunctor.SetAcceptanceTest(&acceptanceTest);
+  // Test the result of PatchMatch here
+   patchMatchFunctor.SetRandom(false);
 
   // Here, the source match and target match are the same, specifying the classicial
   // "use pixels outside the hole to fill the pixels inside the hole".
   // In an interactive algorith, the user could manually specify a source region,
   // improving the resulting inpainting.
-  BDSInpaintingRings<ImageType> bdsInpainting;
+  BDSInpaintingMultiRes<ImageType> bdsInpainting;
   bdsInpainting.SetPatchRadius(patchRadius);
   bdsInpainting.SetImage(image);
   bdsInpainting.SetSourceMask(sourceMask);
