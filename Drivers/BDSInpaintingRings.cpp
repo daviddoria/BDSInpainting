@@ -33,6 +33,8 @@
 
 // Custom
 #include "BDSInpaintingRings.h"
+#include "AcceptanceTestNeighborHistogram.h"
+#include "InitializerRandom.h"
 
 int main(int argc, char*argv[])
 {
@@ -110,15 +112,24 @@ int main(int argc, char*argv[])
   patchMatchFunctor.SetPatchRadius(patchRadius);
   patchMatchFunctor.SetPatchDistanceFunctor(&ssdFunctor);
   patchMatchFunctor.SetIterations(5);
-  patchMatchFunctor.SetInitializationStrategy(PatchMatch<ImageType>::RANDOM);
-  patchMatchFunctor.SetHistogramAcceptanceThreshold(500.0f);
 
-  // Test the result of PatchMatch here
-//   patchMatchFunctor.SetImage(image);
-//   patchMatchFunctor.SetTargetMask(targetMask);
-//   patchMatchFunctor.SetSourceMask(sourceMask);
-   // patchMatchFunctor.SetRandom(false);
-//   patchMatchFunctor.Compute(NULL);
+  // No need to setup the initializer here - it will be setup inside BDSInpaintingRings because
+  // the data needs to change during the iterations
+
+//   InitializerRandom<ImageType> initializer;
+//   InitializerRandom<ImageType> initializer(image, patchRadius);
+//   initializer.SetTargetMask(targetMask);
+//   initializer.SetSourceMask(sourceMask);
+//   initializer.SetPatchDistanceFunctor(ssdFunctor);
+
+  // Actually we don't need this either, because we can just create it internally (in BDSInpainting*)
+//   InitializerRandom<ImageType> initializer;
+//   patchMatchFunctor.SetInitializer(&initializer);
+//   patchMatchFunctor.Initialize();
+
+  // Set acceptance test to histogram threshold
+  AcceptanceTestNeighborHistogram<ImageType> acceptanceTest;
+  patchMatchFunctor.SetAcceptanceTest(&acceptanceTest);
 
   // Here, the source match and target match are the same, specifying the classicial
   // "use pixels outside the hole to fill the pixels inside the hole".
