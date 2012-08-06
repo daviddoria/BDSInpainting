@@ -20,6 +20,7 @@
 #define BDSInpaintingRings_HPP
 
 #include "BDSInpaintingRings.h"
+#include "BDSInpainting.h" // Composition
 
 // Custom
 #include "InitializerRandom.h"
@@ -27,23 +28,17 @@
 #include "AcceptanceTestNeighborHistogram.h"
 
 template <typename TImage>
-BDSInpaintingRings<TImage>::BDSInpaintingRings() : BDSInpainting<TImage>()
+BDSInpaintingRings<TImage>::BDSInpaintingRings() : InpaintingAlgorithm<TImage>()
 {
 
 }
 
 template <typename TImage>
-void BDSInpaintingRings<TImage>::Compute(TImage* const image, Mask* const sourceMask, Mask* const targetMask,
-                                         typename PatchMatch<TImage>::PMImageType* inputNNField,
-                                         TImage* const output)
+void BDSInpaintingRings<TImage>::Inpaint()
 {
-  ITKHelpers::WriteImage(targetMask, "OriginalTargetMask.png");
-
-  //std::cout << "Target mask: " << std::endl; targetMask->OutputMembers(); // Debug only
-
   // Save the original mask, as we will be modifying the internal masks below
   Mask::Pointer currentTargetMask = Mask::New();
-  currentTargetMask->DeepCopyFrom(targetMask);
+  currentTargetMask->DeepCopyFrom(this->TargetMask);
 
   // The pixels from which information is allowed to propagate
   Mask::Pointer currentPropagationMask = Mask::New();
@@ -53,16 +48,14 @@ void BDSInpaintingRings<TImage>::Compute(TImage* const image, Mask* const source
 
   // Setup the PatchMatch object by initializing using the target mask
   // (versus the propagation mask, which we will do next) as the target mask
-  this->PatchMatchFunctor->SetImage(image);
-  this->PatchMatchFunctor->SetSourceMask(sourceMask);
-  this->PatchMatchFunctor->SetTargetMask(targetMask);
+  this->PatchMatchFunctor->SetImage(this->Image);
+  this->PatchMatchFunctor->SetSourceMask(this->SourceMask);
+  this->PatchMatchFunctor->SetTargetMask(this->TargetMask);
 
   // Initialize the known region
   InitializerKnownRegion<TImage> knownRegionInitializer;
   knownRegionInitializer.SetImage(this->Image);
   knownRegionInitializer.SetPatchRadius(this->PatchRadius);
-  this->PatchMatchFunctor->SetInitializer(&knownRegionInitializer);
-  this->PatchMatchFunctor->Initialize();
 
   { // debug only
   typename PatchMatch<TImage>::CoordinateImageType::Pointer coordinateImage =
@@ -71,12 +64,12 @@ void BDSInpaintingRings<TImage>::Compute(TImage* const image, Mask* const source
   ITKHelpers::WriteImage(coordinateImage.GetPointer(), "NNField_KnownRegionInitialized.mha");
   }
 
-  // Set initialization strategy to neighbor histogram
+  // Initialize
   InitializerRandom<TImage> initializer;
   initializer.SetImage(this->Image);
   initializer.SetPatchRadius(this->PatchRadius);
-  initializer.SetTargetMask(targetMask);
-  initializer.SetSourceMask(sourceMask);
+  initializer.SetTargetMask(this->TargetMask);
+  initializer.SetSourceMask(this->SourceMask);
   initializer.SetPatchDistanceFunctor(this->PatchMatchFunctor->GetPatchDistanceFunctor());
 
   // Compute the NNField in the region we are allowed to propagate from
@@ -97,7 +90,7 @@ void BDSInpaintingRings<TImage>::Compute(TImage* const image, Mask* const source
   // Use a NULL previous field unless one has been provided. We have to
   // create this as a smart pointer because if the inputNNField pointer is NULL,
   // we cannot allocate it later because it is not a smart pointer.
-  typename PatchMatch<TImage>::PMImageType::Pointer previousNNField = NULL;
+  typename PatchMatchFunctorType::MatchImageType::Pointer previousNNField = NULL;
   if(inputNNField)
   {
     ITKHelpers::DeepCopy(inputNNField, previousNNField.GetPointer());
@@ -110,9 +103,6 @@ void BDSInpaintingRings<TImage>::Compute(TImage* const image, Mask* const source
 
   while(currentTargetMask->HasValidPixels())
   {
-    //ITKHelpers::WriteSequentialImage(currentTargetMask.GetPointer(),
-//              "BDSRings_CurrentTargetMask", ringCounter, 4, "png");
-
     // We trust the information everywhere except in the hole
     currentPropagationMask->DeepCopyFrom(currentTargetMask);
     currentPropagationMask->InvertData();
@@ -153,19 +143,37 @@ void BDSInpaintingRings<TImage>::Compute(TImage* const image, Mask* const source
     this->PatchMatchFunctor->SetAcceptanceTestFunctor(&acceptanceTest);
 
     // Compute the filling in the ring
-    Superclass::Compute(image, sourceMask, boundaryMask, previousNNField, filledRing);
 
-    ITKHelpers::WriteSequentialImage(filledRing.GetPointer(), "BDSRings_InpaintedRing", ringCounter, 4, "png");
+    // We must use different objects since we will change the initialization, etc
+    SSD<TImage> internalSSD;
+    internalSSD.SetImage();
+    internalSSD.SetPatchRadius(this->PatchRadius);
 
-    { // debug only
-    typename PatchMatch<TImage>::CoordinateImageType::Pointer coordinateImage =
-      PatchMatch<TImage>::CoordinateImageType::New();
-    PatchMatch<TImage>::GetPatchCentersImage(this->PatchMatchFunctor->GetOutput(), coordinateImage);
-    ITKHelpers::WriteSequentialImage(coordinateImage.GetPointer(), "BDSRings_NNField", ringCounter, 4, "mha");
-    }
+    PatchMatchFunctorType internalPatchMatch;
+    internalPatchMatch.SetImage();
+    internalPatchMatch.SetTargetMask();
+    internalPatchMatch.SetPatchDistanceFunctor(&internalSSD);
+
+    BDSInpainting<TImage> internalBDSInpaintingFunctor;
+    internalBDSInpaintingFunctor.SetImage(this->Image);
+    internalBDSInpaintingFunctor.SetPatchRadius(this->PatchRadius);
+    internalBDSInpaintingFunctor.SetTargetMask(boundaryMask);
+    internalBDSInpaintingFunctor.SetSourceMask(this->SourceMask);
+    internalBDSInpaintingFunctor.SetPatchMatchFunctor(&internalPatchMatch);
+
+    InitializerKnownRegion<TImage> knownRegionInitializer;
+    knownRegionInitializer.SetImage(this->Image);
+    knownRegionInitializer.SetPatchRadius(this->PatchRadius);
+    knownRegionInitializer.SetPatchDistanceFunctor(this->PatchDistanceFunctor);
+    
+    //internalBDSInpaintingFunctor.Inpaint(previousNNField, filledRing);
+    internalBDSInpaintingFunctor.Inpaint();
+
+    ITKHelpers::WriteSequentialImage(internalBDSInpaintingFunctor->GetOutput(),
+                                     "BDSRings_InpaintedRing", ringCounter, 4, "png");
 
     // Copy the filled ring into the image for the next iteration
-    ITKHelpers::DeepCopy(filledRing.GetPointer(), image);
+    ITKHelpers::DeepCopy(internalBDSInpaintingFunctor->GetOutput(), this->Image.GetPointer());
 
     // Reduce the size of the target region (we "enlarge the hole", because
     // the "hole" is considered the valid part of the target mask)
@@ -174,7 +182,7 @@ void BDSInpaintingRings<TImage>::Compute(TImage* const image, Mask* const source
 
     if(!previousNNField)
     {
-      previousNNField = PatchMatch<TImage>::PMImageType::New();
+      previousNNField = PatchMatchFunctorType::MatchImageType::New();
     }
 
     ITKHelpers::DeepCopy(this->PatchMatchFunctor->GetOutput(), previousNNField.GetPointer());
@@ -182,7 +190,7 @@ void BDSInpaintingRings<TImage>::Compute(TImage* const image, Mask* const source
     ringCounter++;
   }
 
-  ITKHelpers::DeepCopy(filledRing.GetPointer(), output);
+  ITKHelpers::DeepCopy(filledRing.GetPointer(), this->Output.GetPointer());
 
 }
 

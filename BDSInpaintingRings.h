@@ -21,26 +21,20 @@
 
 #include "BDSInpainting.h"
 
-/** This class uses PatchMatch to compute the nearest neighbor field, and then the
- *  coherence term from Bidirectional Similarity to perform inpainting. */
+/** This class uses composition (uses BDSInpainting objects internally)
+ *  to compute the nearest neighbor field one ring at a time, from the outside
+ *  in, compositing as it goes along.. */
 template <typename TImage>
-class BDSInpaintingRings : public BDSInpainting<TImage>
+class BDSInpaintingRings : public InpaintingAlgorithm<TImage>
 {
 public:
-
-  typedef BDSInpainting<TImage> Superclass;
-  // Inherited typedefs
+  typedef InpaintingAlgorithm<TImage> Superclass;
+  
   typedef typename Superclass::PatchMatchFunctorType PatchMatchFunctorType;
-
-  /** Constructor. */
+  
   BDSInpaintingRings();
 
-  /** This function does the actual work of inpainting a single level.
-    * It is called from Compute() at multiple resolutions. */
-  void Compute(TImage* const image, Mask* const sourceMask, Mask* const targetMask,
-               typename PatchMatch<TImage>::PMImageType* previousNNField, TImage* const output);
-
-private:
+  void Inpaint();
 
 };
 

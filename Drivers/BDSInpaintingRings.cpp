@@ -27,9 +27,14 @@
 
 // Submodules
 #include <Mask/Mask.h>
+
 #include <ITKHelpers/ITKHelpers.h>
+
 #include <PatchComparison/SSD.h>
+
 #include <PatchMatch/PatchMatch.h>
+
+#include <PoissonEditing/PoissonEditing.h>
 
 // Custom
 #include "BDSInpaintingRings.h"

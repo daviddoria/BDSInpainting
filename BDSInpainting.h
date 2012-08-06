@@ -19,6 +19,8 @@
 #ifndef BDSInpainting_H
 #define BDSInpainting_H
 
+#include "InpaintingAlgorithm.h"
+
 // ITK
 #include "itkCovariantVector.h"
 #include "itkImage.h"
@@ -34,74 +36,20 @@
   * uses the coherence term from the paper "Bidirectional Similarity" to perform inpainting.
   * By optionally using more than 1 iteration, the inpainting quality should improve. */
 template <typename TImage>
-class BDSInpainting
+class BDSInpainting : public InpaintingAlgorithm<TImage>
 {
 public:
 
   /** Constructor. */
   BDSInpainting();
 
-  typedef PatchMatch<TImage> PatchMatchFunctorType;
-
-  /** Choices of compositing method. */
-  enum CompositingMethodEnum {BEST_PATCH, WEIGHTED_AVERAGE, AVERAGE, CLOSEST_TO_AVERAGE};
-
-  /** Set the compositing method to use. */
-  void SetCompositor(Compositor<TImage>* compositor);
+  typedef InpaintingAlgorithm<TImage> Superclass;
+  
+  typedef typename Superclass::PatchMatchFunctorType PatchMatchFunctorType;
 
   /** Compute the nn-field for the target pixels and then composite the patches.*/
   void Inpaint();
 
-  /** Get the resulting inpainted image. */
-  TImage* GetOutput();
-
-  /** Set the number of iterations to run. */
-  void SetIterations(const unsigned int iterations);
-
-  /** Set the patch radius. */
-  void SetPatchRadius(const unsigned int patchRadius);
-
-  /** Set the image to fill. */
-  void SetImage(TImage* const image);
-
-  /** Set the PatchMatch functor to use. */
-  void SetPatchMatchFunctor(PatchMatchFunctorType* patchMatchFunctor);
-
-  /** Set the mask that indicates where to take source patches from. Source patches
-    * are patches that are entirely in the Valid region.*/
-  void SetSourceMask(Mask* const mask);
-
-  /** Set the mask that indicates where to fill the image. Pixels in the Hole region should be filled.*/
-  void SetTargetMask(Mask* const mask);
-
-protected:
-
-  /** The number of iterations to run. */
-  unsigned int Iterations;
-
-  /** The radius of the patches to use for inpainting. */
-  unsigned int PatchRadius;
-
-  /** The output image. */
-  typename TImage::Pointer Output;
-
-  /** The image to fill. */
-  typename TImage::Pointer Image;
-
-  /** The mask where Hole pixels indicate the pixels to fill. */
-  Mask::Pointer TargetMask;
-
-  /** The mask where fully 'valid' patches are allowed to be matches. */
-  Mask::Pointer SourceMask;
-  
-  /** The compositing method to use. */
-  CompositingMethodEnum CompositingMethod;
-
-  /** The PatchMatch functor to use. */
-  PatchMatchFunctorType* PatchMatchFunctor;
-
-  /** The compositor to use. */
-  Compositor<TImage>* CompositorFunctor;
 };
 
 #include "BDSInpainting.hpp"
