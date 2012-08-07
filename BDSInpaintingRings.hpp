@@ -42,6 +42,20 @@ void BDSInpaintingRings<TImage>::Inpaint()
   ITKHelpers::WriteImage(this->SourceMask.GetPointer(), "BDSInpaintingRings_SourceMask.png");
   }
 
+  // Remove the boundary from the source mask, to give the propagation some breathing room.
+  // We just remove a 1 pixel thick boundary around the image, then perform an ExpandHole operation.
+  // ExpandHole() only operates on the boundary between Valid and Hole, so if we did not first remove the
+  // single pixel boundary nothing would happen to the boundary by the morphological filter.
+  std::vector<itk::Index<2> > boundaryPixels =
+    //ITKHelpers::GetBoundaryPixels(this->SourceMask->GetLargestPossibleRegion(), this->PatchRadius);
+    ITKHelpers::GetBoundaryPixels(this->SourceMask->GetLargestPossibleRegion(), 1);
+  ITKHelpers::SetPixels(this->SourceMask.GetPointer(), boundaryPixels, this->SourceMask->GetHoleValue());
+
+  ITKHelpers::WriteImage(this->SourceMask.GetPointer(), "BDSInpaintingRings_BoundaryRemovedSourceMask.png");
+
+  this->SourceMask->ExpandHole(this->PatchRadius);
+  ITKHelpers::WriteImage(this->SourceMask.GetPointer(), "BDSInpaintingRings_FinalSourceMask.png");
+  
   // Save the original mask, as we will be modifying the internal masks below
   Mask::Pointer currentTargetMask = Mask::New();
   currentTargetMask->DeepCopyFrom(this->TargetMask);
