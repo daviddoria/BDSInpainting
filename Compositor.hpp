@@ -115,14 +115,14 @@ void Compositor<TImage>::Compute()
                                                fullRegion);
 
     // Remove patches from the set if they have invalid NNField values
-    patchesContainingPixel.erase(std::remove_if(patchesContainingPixel.begin(), patchesContainingPixel.end(),
-                                 [NearestNeighborField](const itk::ImageRegion<2>& testRegion)
-                                  {
-                                    itk::Index<2> index = ITKHelpers::GetRegionCenter(testRegion);
-                                    bool valid = NearestNeighborField->GetPixel(index).IsValid();
-                                    return !valid;
-                                  }),
-                                 patchesContainingPixel.end());
+//     patchesContainingPixel.erase(std::remove_if(patchesContainingPixel.begin(), patchesContainingPixel.end(),
+//                                  [NearestNeighborField](const itk::ImageRegion<2>& testRegion)
+//                                   {
+//                                     itk::Index<2> index = ITKHelpers::GetRegionCenter(testRegion);
+//                                     bool valid = NearestNeighborField->GetPixel(index).IsValid();
+//                                     return !valid;
+//                                   }),
+//                                  patchesContainingPixel.end());
 
     assert(patchesContainingPixel.size() > 0);
 

@@ -25,6 +25,7 @@
 // Custom
 #include "InitializerRandom.h"
 #include "InitializerKnownRegion.h"
+#include "InitializerNeighborHistogram.h"
 #include "AcceptanceTestNeighborHistogram.h"
 
 template <typename TImage>
@@ -88,26 +89,37 @@ void BDSInpaintingRings<TImage>::Inpaint()
   PatchMatchFunctorType::WriteNNField(nnField.GetPointer(), "BDSInpaintingRings_KnownRegionNNField.mha");
 
   // Initialize the NNField in the target region
-  InitializerRandom<TImage> randomInitializer;
-  randomInitializer.SetImage(currentImage);
-  randomInitializer.SetTargetMask(outsideTargetMask);
-  randomInitializer.SetSourceMask(this->SourceMask);
-  randomInitializer.SetPatchDistanceFunctor(this->PatchMatchFunctor->GetPatchDistanceFunctor());
-  randomInitializer.SetPatchRadius(this->PatchRadius);
-  randomInitializer.Initialize(nnField);
-
-  PatchMatchFunctorType::WriteNNField(nnField.GetPointer(), "BDSInpaintingRings_RandomNNField.mha");
+  //InitializerRandom<TImage> initializer;
   
+  InitializerNeighborHistogram<TImage> initializer;
+  initializer.SetNeighborHistogramMultiplier(2.0f);
+  
+  initializer.SetImage(currentImage);
+  initializer.SetTargetMask(outsideTargetMask);
+  initializer.SetSourceMask(this->SourceMask);
+  initializer.SetPatchDistanceFunctor(this->PatchMatchFunctor->GetPatchDistanceFunctor());
+  initializer.SetPatchRadius(this->PatchRadius);
+  initializer.Initialize(nnField);
+
+  PatchMatchFunctorType::WriteNNField(nnField.GetPointer(), "BDSInpaintingRings_InitializedNNField.mha");
+
+  this->PatchMatchFunctor->SetImage(currentImage);
   this->PatchMatchFunctor->SetAllowedPropagationMask(currentPropagationMask);
   this->PatchMatchFunctor->SetPropagationStrategy(PatchMatchFunctorType::RASTER);
-  this->PatchMatchFunctor->GetAcceptanceTest()->SetImage(currentImage);
+  if(dynamic_cast<AcceptanceTestImage<TImage>*>(this->PatchMatchFunctor->GetAcceptanceTest()))
+  {
+    dynamic_cast<AcceptanceTestImage<TImage>*>(this->PatchMatchFunctor->GetAcceptanceTest())->SetImage(currentImage);
+  }
+  else
+  {
+    throw std::runtime_error("Dynamic cast failed in BDSInpaintingRings::Inpaint()!");
+  }
   this->PatchMatchFunctor->SetTargetMask(outsideTargetMask);
   this->PatchMatchFunctor->SetSourceMask(this->SourceMask);
-  this->PatchMatchFunctor->SetAllowedPropagationMask(currentPropagationMask);
   this->PatchMatchFunctor->SetInitialNNField(nnField);
   this->PatchMatchFunctor->Compute();
 
-  PatchMatchFunctorType::WriteNNField(nnField.GetPointer(), "BDSInpaintingRings_PatchMatchNNField.mha");
+  PatchMatchFunctorType::WriteNNField(this->PatchMatchFunctor->GetOutput(), "BDSInpaintingRings_PatchMatchNNField.mha");
 
   // Keep track of which ring we are on
   unsigned int ringCounter = 0;
@@ -150,7 +162,15 @@ void BDSInpaintingRings<TImage>::Inpaint()
     // We set these properties here, but this object is not used here but rather simply passed along to the composition BDSInpainting object below
     this->PatchMatchFunctor->SetAllowedPropagationMask(currentPropagationMask);
     this->PatchMatchFunctor->SetPropagationStrategy(PatchMatchFunctorType::INWARD);
-    this->PatchMatchFunctor->GetAcceptanceTest()->SetImage(currentImage);
+    //this->PatchMatchFunctor->GetAcceptanceTest()->SetImage(currentImage);
+    if(dynamic_cast<AcceptanceTestImage<TImage>*>(this->PatchMatchFunctor->GetAcceptanceTest()))
+    {
+      dynamic_cast<AcceptanceTestImage<TImage>*>(this->PatchMatchFunctor->GetAcceptanceTest())->SetImage(currentImage);
+    }
+    else
+    {
+      throw std::runtime_error("Dynamic cast failed in BDSInpaintingRings::Inpaint()!");
+    }
     this->PatchMatchFunctor->SetTargetMask(currentTargetMask);
     this->PatchMatchFunctor->SetAllowedPropagationMask(currentPropagationMask);
     if(previousNNField)

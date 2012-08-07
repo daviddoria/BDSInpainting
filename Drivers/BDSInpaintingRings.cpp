@@ -118,22 +118,9 @@ int main(int argc, char*argv[])
   patchMatchFunctor.SetPatchDistanceFunctor(&ssdFunctor);
   patchMatchFunctor.SetIterations(5);
 
-  // No need to setup the initializer here - it will be setup inside BDSInpaintingRings because
-  // the data needs to change during the iterations
-
-//   InitializerRandom<ImageType> initializer;
-//   InitializerRandom<ImageType> initializer(image, patchRadius);
-//   initializer.SetTargetMask(targetMask);
-//   initializer.SetSourceMask(sourceMask);
-//   initializer.SetPatchDistanceFunctor(ssdFunctor);
-
-  // Actually we don't need this either, because we can just create it internally (in BDSInpainting*)
-//   InitializerRandom<ImageType> initializer;
-//   patchMatchFunctor.SetInitializer(&initializer);
-//   patchMatchFunctor.Initialize();
-
   // Set acceptance test to histogram threshold
   AcceptanceTestNeighborHistogram<ImageType> acceptanceTest;
+  acceptanceTest.SetNeighborHistogramMultiplier(1.0f);
   patchMatchFunctor.SetAcceptanceTest(&acceptanceTest);
 
   // Here, the source match and target match are the same, specifying the classicial
@@ -152,7 +139,6 @@ int main(int argc, char*argv[])
   Compositor<ImageType> compositor;
   compositor.SetCompositingMethod(Compositor<ImageType>::AVERAGE);
   bdsInpainting.SetCompositor(&compositor);
-
   bdsInpainting.SetPatchMatchFunctor(&patchMatchFunctor);
   bdsInpainting.Inpaint();
 
