@@ -68,9 +68,8 @@ void BDSInpainting<TImage>::Inpaint()
     matchImage->Allocate();
 
     // Initialize the NNField in the known region
-    InitializerKnownRegion<TImage> initializerKnownRegion;
+    InitializerKnownRegion initializerKnownRegion;
     initializerKnownRegion.SetSourceMask(this->SourceMask);
-    initializerKnownRegion.SetImage(currentImage);
     initializerKnownRegion.SetPatchRadius(this->PatchRadius);
     initializerKnownRegion.Initialize(matchImage);
 
@@ -78,8 +77,7 @@ void BDSInpainting<TImage>::Inpaint()
                                         "InitializedKnownRegionNNField.mha"); // debug only
 
     // Initialize the NNField in the target region
-    InitializerRandom<TImage> randomInitializer;
-    randomInitializer.SetImage(currentImage);
+    InitializerRandom<typename std::remove_pointer<decltype(this->PatchMatchFunctor->GetPatchDistanceFunctor())>::type> randomInitializer;
     randomInitializer.SetTargetMask(this->TargetMask);
     randomInitializer.SetSourceMask(this->SourceMask);
     randomInitializer.SetPatchDistanceFunctor(this->PatchMatchFunctor->GetPatchDistanceFunctor());

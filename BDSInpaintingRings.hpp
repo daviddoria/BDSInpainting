@@ -42,20 +42,6 @@ void BDSInpaintingRings<TImage>::Inpaint()
   ITKHelpers::WriteImage(this->SourceMask.GetPointer(), "BDSInpaintingRings_SourceMask.png");
   }
 
-  // Remove the boundary from the source mask, to give the propagation some breathing room.
-  // We just remove a 1 pixel thick boundary around the image, then perform an ExpandHole operation.
-  // ExpandHole() only operates on the boundary between Valid and Hole, so if we did not first remove the
-  // single pixel boundary nothing would happen to the boundary by the morphological filter.
-  std::vector<itk::Index<2> > boundaryPixels =
-    //ITKHelpers::GetBoundaryPixels(this->SourceMask->GetLargestPossibleRegion(), this->PatchRadius);
-    ITKHelpers::GetBoundaryPixels(this->SourceMask->GetLargestPossibleRegion(), 1);
-  ITKHelpers::SetPixels(this->SourceMask.GetPointer(), boundaryPixels, this->SourceMask->GetHoleValue());
-
-  ITKHelpers::WriteImage(this->SourceMask.GetPointer(), "BDSInpaintingRings_BoundaryRemovedSourceMask.png");
-
-  this->SourceMask->ExpandHole(this->PatchRadius);
-  ITKHelpers::WriteImage(this->SourceMask.GetPointer(), "BDSInpaintingRings_FinalSourceMask.png");
-  
   // Save the original mask, as we will be modifying the internal masks below
   Mask::Pointer currentTargetMask = Mask::New();
   currentTargetMask->DeepCopyFrom(this->TargetMask);
@@ -94,40 +80,71 @@ void BDSInpaintingRings<TImage>::Inpaint()
   nnField->Allocate();
 
   // Initialize the NNField in the known region
-  InitializerKnownRegion<TImage> initializerKnownRegion;
+  InitializerKnownRegion initializerKnownRegion;
   initializerKnownRegion.SetSourceMask(this->SourceMask);
-  initializerKnownRegion.SetImage(currentImage);
   initializerKnownRegion.SetPatchRadius(this->PatchRadius);
   initializerKnownRegion.Initialize(nnField);
 
   PatchMatchFunctorType::WriteNNField(nnField.GetPointer(), "BDSInpaintingRings_KnownRegionNNField.mha");
 
-  // Initialize the NNField in the target region
+  // Remove the boundary from the source mask, to give the propagation some breathing room.
+  // We just remove a 1 pixel thick boundary around the image, then perform an ExpandHole operation.
+  // ExpandHole() only operates on the boundary between Valid and Hole, so if we did not first remove the
+  // single pixel boundary nothing would happen to the boundary by the morphological filter.
+  // Must do this after the InitializerKnownRegion so that the pixels whose patches are fully in the original
+  // source region are initialized properly.
+  std::vector<itk::Index<2> > boundaryPixels =
+    //ITKHelpers::GetBoundaryPixels(this->SourceMask->GetLargestPossibleRegion(), this->PatchRadius);
+    ITKHelpers::GetBoundaryPixels(this->SourceMask->GetLargestPossibleRegion(), 1);
+  ITKHelpers::SetPixels(this->SourceMask.GetPointer(), boundaryPixels, this->SourceMask->GetHoleValue());
+
+  ITKHelpers::WriteImage(this->SourceMask.GetPointer(), "BDSInpaintingRings_BoundaryRemovedSourceMask.png");
+
+  this->SourceMask->ExpandHole(this->PatchRadius);
+  ITKHelpers::WriteImage(this->SourceMask.GetPointer(), "BDSInpaintingRings_FinalSourceMask.png");
+
+  // Create the HSV image
+  typedef itk::VectorImage<float, 2> HSVImageType;
+  HSVImageType::Pointer hsvImage = HSVImageType::New();
+  ITKHelpers::ITKImageToHSVImage(currentImage.GetPointer(), hsvImage.GetPointer());
+  ITKHelpers::WriteImage(hsvImage.GetPointer(), "HSV.mha");
+
+//   ITKHelpers::ScaleAllChannelsTo255(hsvImage.GetPointer());
+//   typename TImage::Pointer castedHSVImage = TImage::New();
+//   ITKHelpers::CastImage(hsvImage.GetPointer(), castedHSVImage.GetPointer());
+//   ITKHelpers::WriteImage(castedHSVImage.GetPointer(), "CastedHSV.mha");
+
+  // Initialize the NNField in the PatchRadius thick ring outside of the target region
   //InitializerRandom<TImage> initializer;
-  
-  InitializerNeighborHistogram<TImage> initializer;
+
+  typedef SSD<TImage> SSDFunctorType;
+  SSDFunctorType ssdFunctor;
+  ssdFunctor.SetImage(this->Image);
+
+  InitializerNeighborHistogram<HSVImageType, SSDFunctorType> initializer;
   initializer.SetNeighborHistogramMultiplier(2.0f);
-  
-  initializer.SetImage(currentImage);
+  initializer.SetPatchDistanceFunctor(&ssdFunctor);
+  initializer.SetRangeMin(0.0f);
+  initializer.SetRangeMax(1.0f);
+  initializer.SetImage(hsvImage);
   initializer.SetTargetMask(outsideTargetMask);
   initializer.SetSourceMask(this->SourceMask);
-  initializer.SetPatchDistanceFunctor(this->PatchMatchFunctor->GetPatchDistanceFunctor());
   initializer.SetPatchRadius(this->PatchRadius);
   initializer.Initialize(nnField);
 
   PatchMatchFunctorType::WriteNNField(nnField.GetPointer(), "BDSInpaintingRings_InitializedNNField.mha");
 
+  // Setup acceptance test
+  AcceptanceTestNeighborHistogram<HSVImageType> acceptanceTest;
+  acceptanceTest.SetNeighborHistogramMultiplier(2.0f);
+  acceptanceTest.SetImage(hsvImage);
+  acceptanceTest.SetRangeMin(0);
+  acceptanceTest.SetRangeMax(255);
+  this->PatchMatchFunctor->SetAcceptanceTest(&acceptanceTest);
+
   this->PatchMatchFunctor->SetImage(currentImage);
   this->PatchMatchFunctor->SetAllowedPropagationMask(currentPropagationMask);
   this->PatchMatchFunctor->SetPropagationStrategy(PatchMatchFunctorType::RASTER);
-  if(dynamic_cast<AcceptanceTestImage<TImage>*>(this->PatchMatchFunctor->GetAcceptanceTest()))
-  {
-    dynamic_cast<AcceptanceTestImage<TImage>*>(this->PatchMatchFunctor->GetAcceptanceTest())->SetImage(currentImage);
-  }
-  else
-  {
-    throw std::runtime_error("Dynamic cast failed in BDSInpaintingRings::Inpaint()!");
-  }
   this->PatchMatchFunctor->SetTargetMask(outsideTargetMask);
   this->PatchMatchFunctor->SetSourceMask(this->SourceMask);
   this->PatchMatchFunctor->SetInitialNNField(nnField);
