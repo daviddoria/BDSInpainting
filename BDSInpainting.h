@@ -35,17 +35,15 @@
 /** This class takes a nearest neighbor field and a target mask and
   * uses the coherence term from the paper "Bidirectional Similarity" to perform inpainting.
   * By optionally using more than 1 iteration, the inpainting quality should improve. */
-template <typename TImage>
-class BDSInpainting : public InpaintingAlgorithm<TImage>
+template <typename TImage, typename TPatchMatchFunctor>
+class BDSInpainting : public InpaintingAlgorithm<TImage, TPatchMatchFunctor>
 {
 public:
 
   /** Constructor. */
   BDSInpainting();
 
-  typedef InpaintingAlgorithm<TImage> Superclass;
-  
-  typedef typename Superclass::PatchMatchFunctorType PatchMatchFunctorType;
+  typedef InpaintingAlgorithm<TImage, TPatchMatchFunctor> Superclass;
 
   /** Compute the nn-field for the target pixels and then composite the patches.*/
   void Inpaint();

@@ -109,25 +109,28 @@ int main(int argc, char*argv[])
   targetMask->InvertData();
 
   // Setup the patch distance functor
-  SSD<ImageType> ssdFunctor;
+  typedef SSD<ImageType> SSDFunctorType;
+  SSDFunctorType ssdFunctor;
   ssdFunctor.SetImage(image);
 
-  // Setup the PatchMatch functor
-  PatchMatch<ImageType> patchMatchFunctor;
+  // Set acceptance test to histogram threshold
+  typedef AcceptanceTestNeighborHistogram<ImageType> AcceptanceTestType;
+  AcceptanceTestType acceptanceTest;
+  acceptanceTest.SetNeighborHistogramMultiplier(1.0f);
+
+  // Setup the PatchMatch functor. Use a generic (parent class) AcceptanceTest.
+  typedef PatchMatch<SSDFunctorType, AcceptanceTest> PatchMatchFunctorType;
+  PatchMatchFunctorType patchMatchFunctor;
   patchMatchFunctor.SetPatchRadius(patchRadius);
   patchMatchFunctor.SetPatchDistanceFunctor(&ssdFunctor);
   patchMatchFunctor.SetIterations(5);
-
-  // Set acceptance test to histogram threshold
-  AcceptanceTestNeighborHistogram<ImageType> acceptanceTest;
-  acceptanceTest.SetNeighborHistogramMultiplier(1.0f);
   patchMatchFunctor.SetAcceptanceTest(&acceptanceTest);
 
   // Here, the source match and target match are the same, specifying the classicial
   // "use pixels outside the hole to fill the pixels inside the hole".
   // In an interactive algorith, the user could manually specify a source region,
   // improving the resulting inpainting.
-  BDSInpaintingRings<ImageType> bdsInpainting;
+  BDSInpaintingRings<ImageType, PatchMatchFunctorType> bdsInpainting;
   bdsInpainting.SetPatchRadius(patchRadius);
   bdsInpainting.SetImage(image);
   bdsInpainting.SetSourceMask(sourceMask);

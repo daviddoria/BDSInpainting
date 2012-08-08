@@ -38,13 +38,13 @@
 // STL
 #include <ctime>
 
-template <typename TImage>
-BDSInpainting<TImage>::BDSInpainting() : InpaintingAlgorithm<TImage>()
+template <typename TImage, typename TPatchMatchFunctor>
+BDSInpainting<TImage, TPatchMatchFunctor>::BDSInpainting() : InpaintingAlgorithm<TImage, TPatchMatchFunctor>()
 {
 }
 
-template <typename TImage>
-void BDSInpainting<TImage>::Inpaint()
+template <typename TImage, typename TPatchMatchFunctor>
+void BDSInpainting<TImage, TPatchMatchFunctor>::Inpaint()
 {
   assert(this->Image->GetLargestPossibleRegion().GetSize()[0] > 0);
   assert(this->SourceMask->GetLargestPossibleRegion().GetSize()[0] > 0);
@@ -62,8 +62,8 @@ void BDSInpainting<TImage>::Inpaint()
   for(unsigned int iteration = 0; iteration < this->Iterations; ++iteration)
   {
     // Allocate the initial NNField
-    typename PatchMatchFunctorType::MatchImageType::Pointer matchImage =
-      PatchMatchFunctorType::MatchImageType::New();
+    typename TPatchMatchFunctor::MatchImageType::Pointer matchImage =
+      TPatchMatchFunctor::MatchImageType::New();
     matchImage->SetRegions(currentImage->GetLargestPossibleRegion());
     matchImage->Allocate();
 
@@ -73,7 +73,7 @@ void BDSInpainting<TImage>::Inpaint()
     initializerKnownRegion.SetPatchRadius(this->PatchRadius);
     initializerKnownRegion.Initialize(matchImage);
 
-    PatchMatchFunctorType::WriteNNField(matchImage.GetPointer(),
+    PatchMatchHelpers::WriteNNField(matchImage.GetPointer(),
                                         "InitializedKnownRegionNNField.mha"); // debug only
 
     // Initialize the NNField in the target region
@@ -84,16 +84,15 @@ void BDSInpainting<TImage>::Inpaint()
     randomInitializer.SetPatchRadius(this->PatchRadius);
     randomInitializer.Initialize(matchImage);
 
-    PatchMatchFunctorType::WriteNNField(matchImage.GetPointer(),
+    PatchMatchHelpers::WriteNNField(matchImage.GetPointer(),
                                         "InitializedRandomNNField.mha"); // debug only
     // Give the PatchMatch functor the data
-    this->PatchMatchFunctor->SetImage(currentImage);
     this->PatchMatchFunctor->SetSourceMask(this->SourceMask);
     this->PatchMatchFunctor->SetTargetMask(this->TargetMask);
     this->PatchMatchFunctor->SetInitialNNField(matchImage);
     this->PatchMatchFunctor->Compute();
 
-    PatchMatchFunctorType::WriteNNField(this->PatchMatchFunctor->GetOutput(), "PatchMatchNNField.mha");
+    PatchMatchHelpers::WriteNNField(this->PatchMatchFunctor->GetOutput(), "PatchMatchNNField.mha");
 
     // Update the target pixels
     this->CompositorFunctor->SetTargetMask(this->TargetMask);
