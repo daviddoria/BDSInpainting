@@ -139,15 +139,17 @@ void BDSInpaintingRings<TImage, TPatchMatchFunctor>::Inpaint()
   AcceptanceTestType acceptanceTest;
   acceptanceTest.SetNeighborHistogramMultiplier(2.0f);
   acceptanceTest.SetImage(hsvImage);
-  acceptanceTest.SetRangeMin(0);
-  acceptanceTest.SetRangeMax(255);
-  this->PatchMatchFunctor->SetAcceptanceTest(&acceptanceTest);
+  acceptanceTest.SetRangeMin(0.0f);
+  acceptanceTest.SetRangeMax(1.0f);
+  acceptanceTest.SetPatchRadius(this->PatchRadius);
 
+  this->PatchMatchFunctor->SetAcceptanceTest(&acceptanceTest);
   this->PatchMatchFunctor->SetAllowedPropagationMask(currentPropagationMask);
   this->PatchMatchFunctor->SetPropagationStrategy(TPatchMatchFunctor::RASTER);
   this->PatchMatchFunctor->SetTargetMask(outsideTargetMask);
   this->PatchMatchFunctor->SetSourceMask(this->SourceMask);
   this->PatchMatchFunctor->SetInitialNNField(nnField);
+  this->PatchMatchFunctor->SetPatchRadius(this->PatchRadius);
   this->PatchMatchFunctor->Compute();
 
   PatchMatchHelpers::WriteNNField(this->PatchMatchFunctor->GetOutput(), "BDSInpaintingRings_PatchMatchNNField.mha");
