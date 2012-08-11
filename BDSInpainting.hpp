@@ -27,6 +27,7 @@
 #include <Mask/MaskOperations.h>
 
 #include <PatchMatch/PatchMatch.h>
+#include <PatchMatch/PatchMatchHelpers.h>
 #include <PatchMatch/InitializerKnownRegion.h>
 #include <PatchMatch/InitializerRandom.h>
 
@@ -38,13 +39,13 @@
 // STL
 #include <ctime>
 
-template <typename TImage, typename TPatchMatchFunctor>
-BDSInpainting<TImage, TPatchMatchFunctor>::BDSInpainting() : InpaintingAlgorithm<TImage, TPatchMatchFunctor>()
+template <typename TImage>
+BDSInpainting<TImage>::BDSInpainting() : InpaintingAlgorithm<TImage>()
 {
 }
 
-template <typename TImage, typename TPatchMatchFunctor>
-void BDSInpainting<TImage, TPatchMatchFunctor>::Inpaint()
+template <typename TImage>
+void BDSInpainting<TImage>::Inpaint()
 {
   assert(this->Image->GetLargestPossibleRegion().GetSize()[0] > 0);
   assert(this->SourceMask->GetLargestPossibleRegion().GetSize()[0] > 0);
@@ -62,8 +63,8 @@ void BDSInpainting<TImage, TPatchMatchFunctor>::Inpaint()
   for(unsigned int iteration = 0; iteration < this->Iterations; ++iteration)
   {
     // Allocate the initial NNField
-    typename TPatchMatchFunctor::MatchImageType::Pointer matchImage =
-      TPatchMatchFunctor::MatchImageType::New();
+    PatchMatchHelpers::NNFieldType::Pointer matchImage =
+      PatchMatchHelpers::NNFieldType::New();
     matchImage->SetRegions(currentImage->GetLargestPossibleRegion());
     matchImage->Allocate();
 
@@ -77,7 +78,8 @@ void BDSInpainting<TImage, TPatchMatchFunctor>::Inpaint()
                                         "InitializedKnownRegionNNField.mha"); // debug only
 
     // Initialize the NNField in the target region
-    InitializerRandom<typename std::remove_pointer<decltype(this->PatchMatchFunctor->GetPatchDistanceFunctor())>::type> randomInitializer;
+    InitializerRandom<typename std::remove_pointer<decltype(this->PatchMatchFunctor
+                            ->GetPatchDistanceFunctor())>::type> randomInitializer;
     randomInitializer.SetTargetMask(this->TargetMask);
     randomInitializer.SetSourceMask(this->SourceMask);
     randomInitializer.SetPatchDistanceFunctor(this->PatchMatchFunctor->GetPatchDistanceFunctor());

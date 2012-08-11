@@ -33,7 +33,7 @@
 /** This class takes a nearest neighbor field and a target mask and
   * uses the coherence term from the paper "Bidirectional Similarity" to perform inpainting.
   * By optionally using more than 1 iteration, the inpainting quality should improve. */
-template <typename TImage, typename TPatchMatchFunctor>
+template <typename TImage>
 class InpaintingAlgorithm
 {
 public:
@@ -58,9 +58,6 @@ public:
 
   /** Set the image to fill. */
   void SetImage(TImage* const image);
-
-  /** Set the PatchMatch functor to use. */
-  void SetPatchMatchFunctor(TPatchMatchFunctor* patchMatchFunctor);
 
   /** Set the mask that indicates where to take source patches from. Source patches
     * are patches that are entirely in the Valid region.*/
@@ -88,9 +85,6 @@ protected:
 
   /** The mask where fully 'valid' patches are allowed to be matches. */
   Mask::Pointer SourceMask;
-
-  /** The PatchMatch functor to use. */
-  TPatchMatchFunctor* PatchMatchFunctor;
 
   /** The compositor to use. */
   Compositor<TImage>* CompositorFunctor;

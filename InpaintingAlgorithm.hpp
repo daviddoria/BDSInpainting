@@ -26,7 +26,6 @@
 
 #include <Mask/MaskOperations.h>
 
-#include <PatchMatch/PatchMatch.h>
 #include <PatchMatch/InitializerKnownRegion.h>
 #include <PatchMatch/InitializerRandom.h>
 
@@ -38,11 +37,10 @@
 // STL
 #include <ctime>
 
-template <typename TImage, typename TPatchMatchFunctor>
-InpaintingAlgorithm<TImage, TPatchMatchFunctor>::InpaintingAlgorithm() :
+template <typename TImage>
+InpaintingAlgorithm<TImage>::InpaintingAlgorithm() :
           Iterations(5),
           PatchRadius(7),
-          PatchMatchFunctor(NULL),
           CompositorFunctor(NULL)
 {
   this->Output = TImage::New();
@@ -51,50 +49,44 @@ InpaintingAlgorithm<TImage, TPatchMatchFunctor>::InpaintingAlgorithm() :
   this->TargetMask = Mask::New();
 }
 
-template <typename TImage, typename TPatchMatchFunctor>
-TImage* InpaintingAlgorithm<TImage, TPatchMatchFunctor>::GetOutput()
+template <typename TImage>
+TImage* InpaintingAlgorithm<TImage>::GetOutput()
 {
   return this->Output;
 }
 
-template <typename TImage, typename TPatchMatchFunctor>
-void InpaintingAlgorithm<TImage, TPatchMatchFunctor>::SetIterations(const unsigned int iterations)
+template <typename TImage>
+void InpaintingAlgorithm<TImage>::SetIterations(const unsigned int iterations)
 {
   this->Iterations = iterations;
 }
 
-template <typename TImage, typename TPatchMatchFunctor>
-void InpaintingAlgorithm<TImage, TPatchMatchFunctor>::SetPatchRadius(const unsigned int patchRadius)
+template <typename TImage>
+void InpaintingAlgorithm<TImage>::SetPatchRadius(const unsigned int patchRadius)
 {
   this->PatchRadius = patchRadius;
 }
 
-template <typename TImage, typename TPatchMatchFunctor>
-void InpaintingAlgorithm<TImage, TPatchMatchFunctor>::SetImage(TImage* const image)
+template <typename TImage>
+void InpaintingAlgorithm<TImage>::SetImage(TImage* const image)
 {
   ITKHelpers::DeepCopy(image, this->Image.GetPointer());
 }
 
-template <typename TImage, typename TPatchMatchFunctor>
-void InpaintingAlgorithm<TImage, TPatchMatchFunctor>::SetSourceMask(Mask* const mask)
+template <typename TImage>
+void InpaintingAlgorithm<TImage>::SetSourceMask(Mask* const mask)
 {
   this->SourceMask->DeepCopyFrom(mask);
 }
 
-template <typename TImage, typename TPatchMatchFunctor>
-void InpaintingAlgorithm<TImage, TPatchMatchFunctor>::SetTargetMask(Mask* const mask)
+template <typename TImage>
+void InpaintingAlgorithm<TImage>::SetTargetMask(Mask* const mask)
 {
   this->TargetMask->DeepCopyFrom(mask);
 }
 
-template <typename TImage, typename TPatchMatchFunctor>
-void InpaintingAlgorithm<TImage, TPatchMatchFunctor>::SetPatchMatchFunctor(TPatchMatchFunctor* patchMatchFunctor)
-{
-  this->PatchMatchFunctor = patchMatchFunctor;
-}
-
-template <typename TImage, typename TPatchMatchFunctor>
-void InpaintingAlgorithm<TImage, TPatchMatchFunctor>::SetCompositor(Compositor<TImage>* compositor)
+template <typename TImage>
+void InpaintingAlgorithm<TImage>::SetCompositor(Compositor<TImage>* compositor)
 {
   this->CompositorFunctor = compositor;
 }

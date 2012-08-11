@@ -97,7 +97,7 @@ int main(int argc, char*argv[])
   ITKVTKHelpers::ConvertRGBtoHSV(image, hsvImage.GetPointer());
 
   ITKHelpers::WriteImage(image, "HSV.mha");
-  
+
   typedef PoissonEditing<typename TypeTraits<HSVImageType::PixelType>::ComponentType> PoissonEditingType;
 
   typename PoissonEditingType::GuidanceFieldType::Pointer zeroGuidanceField =
@@ -120,38 +120,11 @@ int main(int argc, char*argv[])
   // PatchMatch requires that the target region be specified by valid pixels
   targetMask->InvertData();
 
-  // Setup the patch distance functor
-  typedef SSD<ImageType> SSDFunctorType;
-  SSDFunctorType ssdFunctor;
-  ssdFunctor.SetImage(image);
-
-  // Set acceptance test to histogram threshold
-  typedef AcceptanceTestNeighborHistogram<ImageType> AcceptanceTestType;
-  AcceptanceTestType acceptanceTest;
-  acceptanceTest.SetNeighborHistogramMultiplier(2.0f);
-
-  typedef Propagator<NeighborFunctorType, ProcessFunctorType, AcceptanceTestType> PropagatorType;
-  PropagatorType propagator;
-
-  typedef RandomSearch<ImageType> RandomSearchType;
-  RandomSearchType randomSearcher;
-  
-  // Setup the PatchMatch functor. Use a generic (parent class) AcceptanceTest.
-  typedef PatchMatch<SSDFunctorType, AcceptanceTest,
-                     PropagatorType, RandomSearchType> PatchMatchFunctorType;
-  PatchMatchFunctorType patchMatchFunctor;
-  patchMatchFunctor.SetPatchRadius(patchRadius);
-  patchMatchFunctor.SetPatchDistanceFunctor(&ssdFunctor);
-  patchMatchFunctor.SetPropagationFunctor(&propagator);
-  patchMatchFunctor.SetRandomSearchFunctor(&randomSearcher);
-  patchMatchFunctor.SetIterations(5);
-  patchMatchFunctor.SetAcceptanceTest(&acceptanceTest);
-
   // Here, the source mask and target mask are the same, specifying the classicial
   // "use pixels outside the hole to fill the pixels inside the hole".
   // In an interactive algorith, the user could manually specify a source region,
   // improving the resulting inpainting.
-  BDSInpaintingRings<ImageType, PatchMatchFunctorType> bdsInpainting;
+  BDSInpaintingRings<ImageType> bdsInpainting;
   bdsInpainting.SetPatchRadius(patchRadius);
   bdsInpainting.SetImage(image);
   bdsInpainting.SetSourceMask(sourceMask);
@@ -163,7 +136,6 @@ int main(int argc, char*argv[])
   Compositor<ImageType> compositor;
   compositor.SetCompositingMethod(Compositor<ImageType>::AVERAGE);
   bdsInpainting.SetCompositor(&compositor);
-  bdsInpainting.SetPatchMatchFunctor(&patchMatchFunctor);
   bdsInpainting.Inpaint();
 
   ITKHelpers::WriteRGBImage(bdsInpainting.GetOutput(), outputFilename);

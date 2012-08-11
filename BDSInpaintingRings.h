@@ -24,11 +24,11 @@
 /** This class uses composition (uses BDSInpainting objects internally)
  *  to compute the nearest neighbor field one ring at a time, from the outside
  *  in, compositing as it goes along.. */
-template <typename TImage, typename TPatchMatchFunctor>
-class BDSInpaintingRings : public InpaintingAlgorithm<TImage, TPatchMatchFunctor>
+template <typename TImage>
+class BDSInpaintingRings : public InpaintingAlgorithm<TImage>
 {
 public:
-  typedef InpaintingAlgorithm<TImage, TPatchMatchFunctor> Superclass;
+  typedef InpaintingAlgorithm<TImage> Superclass;
 
   BDSInpaintingRings();
 
