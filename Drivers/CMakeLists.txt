@@ -7,7 +7,9 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}/..)
 # TARGET_LINK_LIBRARIES(BDSInpaintingDemo ${PoissonEditing_libraries} ${PatchMatch_libraries})
 
 ADD_EXECUTABLE(BDSInpaintingRings BDSInpaintingRings.cpp)
-TARGET_LINK_LIBRARIES(BDSInpaintingRings ${PoissonEditing_libraries} ${PatchMatch_libraries})
+TARGET_LINK_LIBRARIES(BDSInpaintingRings ${BDSInpainting_libraries})
+
+message("BDSInpainting_libraries in BDSInpainting/Drivers: ${BDSInpainting_libraries}")
 
 # ADD_EXECUTABLE(BDSInpaintingMultiRes BDSInpaintingMultiRes.cpp)
 # TARGET_LINK_LIBRARIES(BDSInpaintingMultiRes ${PoissonEditing_libraries} ${PatchMatch_libraries})

@@ -14,17 +14,32 @@ if(NOT ITK_FOUND)
   INCLUDE(${USE_ITK_FILE})
 endif()
 
+# VTK
+if(NOT VTK_FOUND)
+  FIND_PACKAGE(VTK REQUIRED)
+  INCLUDE(${USE_VTK_FILE})
+endif()
+
 # Submodules
 if(NOT TARGET PatchMatch)
   add_subdirectory(PatchMatch)
   include_directories(${PatchMatch_includes})
   set(BDSInpainting_includes ${BDSInpainting_includes} ${PatchMatch_includes})
+  set(BDSInpainting_libraries ${BDSInpainting_libraries} ${PatchMatch_libraries})
 endif()
 
 if(NOT TARGET PoissonEditing)
   add_subdirectory(PoissonEditing)
   include_directories(${PoissonEditing_includes})
   set(BDSInpainting_includes ${BDSInpainting_includes} ${PoissonEditing_includes})
+  set(BDSInpainting_libraries ${BDSInpainting_libraries} ${PoissonEditing_libraries})
+endif()
+
+if(NOT TARGET ITKVTKHelpers)
+  add_subdirectory(ITKVTKHelpers)
+  include_directories(${ITKVTKHelpers_includes})
+  set(BDSInpainting_includes ${BDSInpainting_includes} ${ITKVTKHelpers_includes})
+  set(BDSInpainting_libraries ${BDSInpainting_libraries} ${ITKVTKHelpers_libraries})
 endif()
 
 # Allow super-projects to use all of the includes we can use here.

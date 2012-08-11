@@ -27,6 +27,7 @@
 #include "InitializerKnownRegion.h"
 #include "InitializerNeighborHistogram.h"
 #include "AcceptanceTestNeighborHistogram.h"
+#include "Verifier.h"
 
 template <typename TImage, typename TPatchMatchFunctor>
 BDSInpaintingRings<TImage, TPatchMatchFunctor>::BDSInpaintingRings() : InpaintingAlgorithm<TImage, TPatchMatchFunctor>()
@@ -121,15 +122,42 @@ void BDSInpaintingRings<TImage, TPatchMatchFunctor>::Inpaint()
   SSDFunctorType ssdFunctor;
   ssdFunctor.SetImage(this->Image);
 
-  InitializerNeighborHistogram<HSVImageType, SSDFunctorType> initializer;
+  InitializerRandom<SSDFunctorType> initializer;
   initializer.SetPatchDistanceFunctor(&ssdFunctor);
-  initializer.SetRangeMin(0.0f);
-  initializer.SetRangeMax(1.0f);
-  initializer.SetImage(hsvImage);
   initializer.SetTargetMask(outsideTargetMask);
   initializer.SetSourceMask(this->SourceMask);
   initializer.SetPatchRadius(this->PatchRadius);
+  initializer.Initialize(nnField);
 
+  PatchMatchHelpers::WriteNNField(nnField.GetPointer(),
+                                    "InitializedNNField.mha");
+    
+  typedef VerifierNeighborHistogram<HSVImageType> VerifyFunctorType;
+  VerifyFunctorType verifyFunctor;
+  verifyFunctor.SetImage(hsvImage);
+  verifyFunctor.SetNeighborHistogramMultiplier(2.0f);
+  verifyFunctor.SetRangeMin(0.0f);
+  verifyFunctor.SetRangeMax(1.0f);
+  verifyFunctor.SetMatchImage(nnField);
+  verifyFunctor.SetPatchRadius(this->PatchRadius);
+
+  Verifier<VerifyFunctorType> verifier;
+  verifier.SetMask(outsideTargetMask);
+  verifier.SetVerifyFunctor(&verifyFunctor);
+  verifier.Verify(nnField);
+
+  PatchMatchHelpers::WriteNNField(nnField.GetPointer(),
+                                    "VerifiedNNField.mha");
+//   InitializerNeighborHistogram<HSVImageType, SSDFunctorType> initializer;
+//   initializer.SetPatchDistanceFunctor(&ssdFunctor);
+//   initializer.SetRangeMin(0.0f);
+//   initializer.SetRangeMax(1.0f);
+//   initializer.SetImage(hsvImage);
+//   initializer.SetTargetMask(outsideTargetMask);
+//   initializer.SetSourceMask(this->SourceMask);
+//   initializer.SetPatchRadius(this->PatchRadius);
+    //initializer.SetNeighborHistogramMultiplier(histogramMultiplier);
+    
   // Setup acceptance test
   typedef AcceptanceTestNeighborHistogram<HSVImageType> AcceptanceTestType;
   AcceptanceTestType acceptanceTest;
@@ -144,19 +172,26 @@ void BDSInpaintingRings<TImage, TPatchMatchFunctor>::Inpaint()
   this->PatchMatchFunctor->SetTargetMask(outsideTargetMask);
   this->PatchMatchFunctor->SetSourceMask(this->SourceMask);
   this->PatchMatchFunctor->SetPatchRadius(this->PatchRadius);
-  this->PatchMatchFunctor->SetIterations(1);
+  this->PatchMatchFunctor->SetIterations(5);
 
-  float histogramMultiplier = 2.0f;
+  float histogramMultiplierInitial = 2.0f;
+  float histogramMultiplierStep = 0.2f;
+  float histogramMultiplier = histogramMultiplierInitial;
+
   unsigned int iteration = 0;
-  while(PatchMatchHelpers::CountInvalidPixels(nnField.GetPointer(), outsideTargetMask))
+  auto testNotVerifiedLambda = [](const Match& queryMatch)
   {
-    std::cout << "There are " << PatchMatchHelpers::CountInvalidPixels(nnField.GetPointer(), outsideTargetMask) << " invalid pixels." << std::endl;
+    if(!queryMatch.Verified)
+    {
+      return true;
+    }
+    return false;
+  };
 
-    initializer.SetNeighborHistogramMultiplier(histogramMultiplier);
-    initializer.Initialize(nnField);
-
-    PatchMatchHelpers::WriteNNField(nnField.GetPointer(),
-                                    Helpers::GetSequentialFileName("BDSInpaintingRings_InitializedNNField", iteration, "mha"));
+  //while(PatchMatchHelpers::CountInvalidPixels(nnField.GetPointer(), outsideTargetMask))
+  while(PatchMatchHelpers::CountTestedPixels(nnField.GetPointer(), outsideTargetMask, testNotVerifiedLambda))
+  {
+    std::cout << "There are " << PatchMatchHelpers::CountInvalidPixels(nnField.GetPointer(), outsideTargetMask) << " pixels remaining." << std::endl;
 
     acceptanceTest.SetNeighborHistogramMultiplier(histogramMultiplier);
 
@@ -167,7 +202,7 @@ void BDSInpaintingRings<TImage, TPatchMatchFunctor>::Inpaint()
                                     Helpers::GetSequentialFileName("BDSInpaintingRings_PropagatedNNField", iteration, "mha"));
 
     ITKHelpers::DeepCopy(this->PatchMatchFunctor->GetOutput(), nnField.GetPointer());
-    histogramMultiplier += 0.1f;
+    histogramMultiplier += histogramMultiplierStep;
     iteration++;
   }
 

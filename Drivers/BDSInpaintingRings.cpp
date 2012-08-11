@@ -30,6 +30,8 @@
 
 #include <ITKHelpers/ITKHelpers.h>
 
+#include <ITKVTKHelpers/ITKVTKHelpers.h>
+
 #include <PatchComparison/SSD.h>
 
 #include <PatchMatch/PatchMatch.h>
@@ -40,6 +42,8 @@
 #include "BDSInpaintingRings.h"
 #include "AcceptanceTestNeighborHistogram.h"
 #include "InitializerRandom.h"
+#include "Propagator.h"
+#include "RandomSearch.h"
 
 int main(int argc, char*argv[])
 {
@@ -87,23 +91,31 @@ int main(int argc, char*argv[])
   Mask::Pointer targetMask = Mask::New();
   targetMask->Read(targetMaskFilename);
 
-  //std::cout << "target mask has " << targetMask->CountHolePixels() << " hole pixels." << std::endl;
+  // Poisson fill the input image in HSV space
+  typedef itk::Image<itk::CovariantVector<float, 3>, 2> HSVImageType;
+  HSVImageType::Pointer hsvImage = HSVImageType::New();
+  ITKVTKHelpers::ConvertRGBtoHSV(image, hsvImage.GetPointer());
 
-  // Poisson fill the input image
-  typedef PoissonEditing<typename TypeTraits<ImageType::PixelType>::ComponentType> PoissonEditingType;
+  ITKHelpers::WriteImage(image, "HSV.mha");
+  
+  typedef PoissonEditing<typename TypeTraits<HSVImageType::PixelType>::ComponentType> PoissonEditingType;
 
   typename PoissonEditingType::GuidanceFieldType::Pointer zeroGuidanceField =
             PoissonEditingType::GuidanceFieldType::New();
-  zeroGuidanceField->SetRegions(image->GetLargestPossibleRegion());
+  zeroGuidanceField->SetRegions(hsvImage->GetLargestPossibleRegion());
   zeroGuidanceField->Allocate();
   typename PoissonEditingType::GuidanceFieldType::PixelType zeroPixel;
   zeroPixel.Fill(0);
   ITKHelpers::SetImageToConstant(zeroGuidanceField.GetPointer(), zeroPixel);
 
-  PoissonEditingType::FillImage(image, targetMask,
-                                zeroGuidanceField.GetPointer(), image);
+  PoissonEditingType::FillImage(hsvImage.GetPointer(), targetMask,
+                                zeroGuidanceField.GetPointer(), hsvImage.GetPointer());
 
-  ITKHelpers::WriteRGBImage(image, "PoissonFilled.png");
+  ITKHelpers::WriteImage(image, "PoissonFilled_HSV.mha");
+
+  ITKVTKHelpers::ConvertHSVtoRGB(hsvImage.GetPointer(), image);
+
+  ITKHelpers::WriteRGBImage(image, "PoissonFilled_HSV.png");
 
   // PatchMatch requires that the target region be specified by valid pixels
   targetMask->InvertData();
@@ -116,17 +128,26 @@ int main(int argc, char*argv[])
   // Set acceptance test to histogram threshold
   typedef AcceptanceTestNeighborHistogram<ImageType> AcceptanceTestType;
   AcceptanceTestType acceptanceTest;
-  acceptanceTest.SetNeighborHistogramMultiplier(1.0f);
+  acceptanceTest.SetNeighborHistogramMultiplier(2.0f);
 
+  typedef Propagator<NeighborFunctorType, ProcessFunctorType, AcceptanceTestType> PropagatorType;
+  PropagatorType propagator;
+
+  typedef RandomSearch<ImageType> RandomSearchType;
+  RandomSearchType randomSearcher;
+  
   // Setup the PatchMatch functor. Use a generic (parent class) AcceptanceTest.
-  typedef PatchMatch<SSDFunctorType, AcceptanceTest> PatchMatchFunctorType;
+  typedef PatchMatch<SSDFunctorType, AcceptanceTest,
+                     PropagatorType, RandomSearchType> PatchMatchFunctorType;
   PatchMatchFunctorType patchMatchFunctor;
   patchMatchFunctor.SetPatchRadius(patchRadius);
   patchMatchFunctor.SetPatchDistanceFunctor(&ssdFunctor);
+  patchMatchFunctor.SetPropagationFunctor(&propagator);
+  patchMatchFunctor.SetRandomSearchFunctor(&randomSearcher);
   patchMatchFunctor.SetIterations(5);
   patchMatchFunctor.SetAcceptanceTest(&acceptanceTest);
 
-  // Here, the source match and target match are the same, specifying the classicial
+  // Here, the source mask and target mask are the same, specifying the classicial
   // "use pixels outside the hole to fill the pixels inside the hole".
   // In an interactive algorith, the user could manually specify a source region,
   // improving the resulting inpainting.
