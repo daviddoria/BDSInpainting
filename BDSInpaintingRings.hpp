@@ -33,6 +33,10 @@
 // Submodules
 #include <PatchMatch/PropagatorForwardBackward.h>
 #include <PatchMatch/RandomSearch.h>
+#include <PatchMatch/AcceptanceTestSSD.h>
+#include <PatchMatch/AcceptanceTestSourceRegion.h>
+#include <PatchMatch/AcceptanceTestComposite.h>
+#include <PatchMatch/Process.h>
 
 template <typename TImage>
 BDSInpaintingRings<TImage>::BDSInpaintingRings() : InpaintingAlgorithm<TImage>()
@@ -77,54 +81,11 @@ void BDSInpaintingRings<TImage>::Inpaint()
   nnField->SetRegions(currentImage->GetLargestPossibleRegion());
   nnField->Allocate();
 
-  // Create the HSV image
-  typedef itk::VectorImage<float, 2> HSVImageType;
-  HSVImageType::Pointer hsvImage = HSVImageType::New();
-  ITKHelpers::ITKImageToHSVImage(currentImage.GetPointer(), hsvImage.GetPointer());
-  ITKHelpers::WriteImage(hsvImage.GetPointer(), "HSV.mha");
-
-  //////////////////// The things in this block should probably be passed into this class
-  // Setup the patch distance functor
-  typedef SSD<TImage> SSDFunctorType;
-  SSDFunctorType ssdFunctor;
-  ssdFunctor.SetImage(this->Image);
-
-  // Set acceptance test to histogram threshold
-  typedef AcceptanceTestNeighborHistogram<HSVImageType> AcceptanceTestType;
-  AcceptanceTestType acceptanceTest;
-  acceptanceTest.SetImage(hsvImage);
-  acceptanceTest.SetRangeMin(0.0f);
-  acceptanceTest.SetRangeMax(1.0f);
-  acceptanceTest.SetPatchRadius(this->PatchRadius);
-  acceptanceTest.SetNeighborHistogramMultiplier(2.0f);
-
-  typedef ProcessValidMaskPixels ProcessFunctorType;
-  ProcessFunctorType processFunctor(this->TargetMask);
-
-  typedef PropagatorForwardBackward PropagatorType;
-  PropagatorType propagationFunctor;
-  propagationFunctor.SetPatchRadius(this->PatchRadius);
-  propagationFunctor.Propagate(nnField, &ssdFunctor, &processFunctor, &acceptanceTest);
-
-  typedef RandomSearch<TImage> RandomSearchType;
-  RandomSearchType randomSearcher;
-  randomSearcher.SetImage(this->Image);
-
-  // Setup the PatchMatch functor. Use a generic (parent class) AcceptanceTest.
-  PatchMatch patchMatchFunctor;
-  patchMatchFunctor.SetPatchRadius(this->PatchRadius);
-  patchMatchFunctor.SetIterations(5);
-  patchMatchFunctor.Compute(nnField, &propagationFunctor, &randomSearcher);
-
-  //////////////////// The things in the above block should probably be passed into this class
-  
   // Initialize the NNField in the known region
   InitializerKnownRegion initializerKnownRegion;
   initializerKnownRegion.SetSourceMask(this->SourceMask);
   initializerKnownRegion.SetPatchRadius(this->PatchRadius);
   initializerKnownRegion.Initialize(nnField);
-
-  PatchMatchHelpers::WriteNNField(nnField.GetPointer(), "BDSInpaintingRings_KnownRegionNNField.mha");
 
   // Remove the boundary from the source mask, to give the propagation some breathing room.
   // We just remove a 1 pixel thick boundary around the image, then perform an ExpandHole operation.
@@ -133,7 +94,6 @@ void BDSInpaintingRings<TImage>::Inpaint()
   // Must do this after the InitializerKnownRegion so that the pixels whose patches are fully in the original
   // source region are initialized properly.
   std::vector<itk::Index<2> > boundaryPixels =
-    //ITKHelpers::GetBoundaryPixels(this->SourceMask->GetLargestPossibleRegion(), this->PatchRadius);
     ITKHelpers::GetBoundaryPixels(this->SourceMask->GetLargestPossibleRegion(), 1);
   ITKHelpers::SetPixels(this->SourceMask.GetPointer(), boundaryPixels, this->SourceMask->GetHoleValue());
 
@@ -142,23 +102,82 @@ void BDSInpaintingRings<TImage>::Inpaint()
   this->SourceMask->ExpandHole(this->PatchRadius);
   ITKHelpers::WriteImage(this->SourceMask.GetPointer(), "BDSInpaintingRings_FinalSourceMask.png");
 
-//   ITKHelpers::ScaleAllChannelsTo255(hsvImage.GetPointer());
-//   typename TImage::Pointer castedHSVImage = TImage::New();
-//   ITKHelpers::CastImage(hsvImage.GetPointer(), castedHSVImage.GetPointer());
-//   ITKHelpers::WriteImage(castedHSVImage.GetPointer(), "CastedHSV.mha");
+  // Create the HSV image
+  typedef itk::VectorImage<float, 2> HSVImageType;
+  HSVImageType::Pointer hsvImage = HSVImageType::New();
+  ITKHelpers::ITKImageToHSVImage(currentImage.GetPointer(), hsvImage.GetPointer());
+  ITKHelpers::WriteImage(hsvImage.GetPointer(), "HSV.mha");
+
+  //////////////////// The things in this block should probably be passed into this class
+  // Setup the patch distance functor
+  typedef SSD<TImage> PatchDistanceFunctorType;
+  PatchDistanceFunctorType patchDistanceFunctor;
+  patchDistanceFunctor.SetImage(this->Image);
+
+  typedef AcceptanceTestSSD AcceptanceTestSSDType;
+  AcceptanceTestSSDType acceptanceTestSSD;
+
+  typedef AcceptanceTestSourceRegion AcceptanceTestSourceRegionType;
+  AcceptanceTestSourceRegion acceptanceTestSourceRegion(this->SourceMask);
+
+  typedef AcceptanceTestNeighborHistogram<HSVImageType> NeighborHistogramAcceptanceTestType;
+  NeighborHistogramAcceptanceTestType neighborHistogramAcceptanceTest;
+  neighborHistogramAcceptanceTest.SetImage(hsvImage);
+  neighborHistogramAcceptanceTest.SetRangeMin(0.0f);
+  neighborHistogramAcceptanceTest.SetRangeMax(1.0f);
+  neighborHistogramAcceptanceTest.SetPatchRadius(this->PatchRadius);
+  neighborHistogramAcceptanceTest.SetNeighborHistogramMultiplier(2.0f);
+
+  typedef AcceptanceTestComposite AcceptanceTestType;
+  AcceptanceTestComposite acceptanceTest;
+  acceptanceTest.AddAcceptanceTest(&acceptanceTestSourceRegion);
+  acceptanceTest.AddAcceptanceTest(&acceptanceTestSSD);
+  acceptanceTest.AddAcceptanceTest(&neighborHistogramAcceptanceTest);
+
+  typedef ProcessValidMaskPixels ProcessFunctorType;
+  ProcessFunctorType processFunctor(outsideTargetMask);
+
+  // This is templated on the parent class "Process" so the process functor can be
+  // changed to one of a different type later
+  typedef PropagatorForwardBackward<PatchDistanceFunctorType, Process,
+          AcceptanceTestType> PropagatorType;
+  PropagatorType propagationFunctor;
+  propagationFunctor.SetPatchRadius(this->PatchRadius);
+  propagationFunctor.SetAcceptanceTest(&acceptanceTest);
+  propagationFunctor.SetPatchDistanceFunctor(&patchDistanceFunctor);
+  propagationFunctor.SetProcessFunctor(&processFunctor);
+
+  // This is templated on the parent class "Process" so the process functor can be
+  // changed to one of a different type later
+  //typedef RandomSearch<TImage, ProcessFunctorType, PatchDistanceFunctorType, AcceptanceTestType>
+  typedef RandomSearch<TImage, Process, PatchDistanceFunctorType, AcceptanceTestType>
+    RandomSearchType;
+  RandomSearchType randomSearcher;
+  randomSearcher.SetImage(this->Image);
+  randomSearcher.SetPatchRadius(this->PatchRadius);
+  randomSearcher.SetSourceMask(this->SourceMask);
+  randomSearcher.SetPatchDistanceFunctor(&patchDistanceFunctor);
+  randomSearcher.SetProcessFunctor(&processFunctor);
+  randomSearcher.SetAcceptanceTest(&acceptanceTest);
+
+  PatchMatchHelpers::WriteNNField(nnField.GetPointer(), "BDSInpaintingRings_KnownRegionNNField.mha");
 
   // Initialize the NNField in the PatchRadius thick ring outside of the target region
-  //InitializerRandom<TImage> initializer;
-
-  InitializerRandom<SSDFunctorType> initializer;
-  initializer.SetPatchDistanceFunctor(&ssdFunctor);
+  InitializerRandom<PatchDistanceFunctorType> initializer;
+  initializer.SetPatchDistanceFunctor(&patchDistanceFunctor);
   initializer.SetTargetMask(outsideTargetMask);
   initializer.SetSourceMask(this->SourceMask);
   initializer.SetPatchRadius(this->PatchRadius);
   initializer.Initialize(nnField);
 
-  PatchMatchHelpers::WriteNNField(nnField.GetPointer(),
-                                    "InitializedNNField.mha");
+  PatchMatchHelpers::WriteNNField(nnField.GetPointer(), "BDSInpaintingRings_RandomInit.mha");
+
+  // Setup the PatchMatch functor
+  PatchMatch patchMatchFunctor;
+  patchMatchFunctor.SetIterations(5);
+  patchMatchFunctor.Compute(nnField, &propagationFunctor, &randomSearcher, &processFunctor);
+
+  PatchMatchHelpers::WriteNNField(nnField.GetPointer(), "BDSInpaintingRings_FirstPatchMatch.mha");
 
   typedef VerifierNeighborHistogram<HSVImageType> VerifyFunctorType;
   VerifyFunctorType verifyFunctor;
@@ -175,16 +194,7 @@ void BDSInpaintingRings<TImage>::Inpaint()
   verifier.Verify(nnField);
 
   PatchMatchHelpers::WriteNNField(nnField.GetPointer(),
-                                    "VerifiedNNField.mha");
-//   InitializerNeighborHistogram<HSVImageType, SSDFunctorType> initializer;
-//   initializer.SetPatchDistanceFunctor(&ssdFunctor);
-//   initializer.SetRangeMin(0.0f);
-//   initializer.SetRangeMax(1.0f);
-//   initializer.SetImage(hsvImage);
-//   initializer.SetTargetMask(outsideTargetMask);
-//   initializer.SetSourceMask(this->SourceMask);
-//   initializer.SetPatchRadius(this->PatchRadius);
-    //initializer.SetNeighborHistogramMultiplier(histogramMultiplier);
+                                    "BDSInpaintingRings_VerifiedNNField.mha");
 
   float histogramMultiplierInitial = 2.0f;
   float histogramMultiplierStep = 0.2f;
@@ -200,22 +210,29 @@ void BDSInpaintingRings<TImage>::Inpaint()
     return false;
   };
 
-  //while(PatchMatchHelpers::CountInvalidPixels(nnField.GetPointer(), outsideTargetMask))
-  while(PatchMatchHelpers::CountTestedPixels(nnField.GetPointer(), outsideTargetMask, testNotVerifiedLambda))
+  typedef ProcessInvalidTarget ProcessInvalidTargetFunctorType;
+  ProcessInvalidTargetFunctorType processInvalidTargetFunctor(outsideTargetMask, nnField);
+  
+  while(PatchMatchHelpers::CountTestedPixels(nnField.GetPointer(),
+          outsideTargetMask, testNotVerifiedLambda) > 0)
   {
     std::cout << "There are "
-              << PatchMatchHelpers::CountInvalidPixels(nnField.GetPointer(), outsideTargetMask)
-              << " pixels remaining." << std::endl;
+              << PatchMatchHelpers::CountTestedPixels(nnField.GetPointer(),
+                                                      outsideTargetMask, testNotVerifiedLambda)
+              << " unvalidated pixels remaining." << std::endl;
 
-    acceptanceTest.SetNeighborHistogramMultiplier(histogramMultiplier);
+    neighborHistogramAcceptanceTest.SetNeighborHistogramMultiplier(histogramMultiplier);
 
-    patchMatchFunctor.Compute(nnField, &propagationFunctor, &randomSearcher);
+    patchMatchFunctor.Compute(nnField, &propagationFunctor, &randomSearcher, &processInvalidTargetFunctor);
+
+    verifyFunctor.SetNeighborHistogramMultiplier(histogramMultiplier);
+    verifier.Verify(nnField);
 
     PatchMatchHelpers::WriteNNField(nnField.GetPointer(),
                                     Helpers::GetSequentialFileName("BDSInpaintingRings_PropagatedNNField",
                                                                    iteration, "mha"));
-
     histogramMultiplier += histogramMultiplierStep;
+    std::cout << "Increased histogramMultiplier to " << histogramMultiplier << std::endl;
     iteration++;
   }
 

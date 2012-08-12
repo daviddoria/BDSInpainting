@@ -83,11 +83,6 @@ void BDSInpainting<TImage>::Inpaint(TPatchMatchFunctor* const patchMatchFunctor,
 
 
   //////////////////// The things in this block should probably be passed into this class
-  // Setup the patch distance functor
-  typedef SSD<TImage> SSDFunctorType;
-  SSDFunctorType ssdFunctor;
-  ssdFunctor.SetImage(this->Image);
-
   // Set acceptance test to histogram threshold
   // Create the HSV image
   typedef itk::VectorImage<float, 2> HSVImageType;
@@ -106,17 +101,24 @@ void BDSInpainting<TImage>::Inpaint(TPatchMatchFunctor* const patchMatchFunctor,
   typedef ProcessValidMaskPixels ProcessFunctorType;
   ProcessFunctorType processFunctor(this->TargetMask);
 
-  typedef PropagatorForwardBackward PropagatorType;
+  typedef PropagatorForwardBackward<PatchDistanceFunctorType, ProcessFunctorType,
+          AcceptanceTestType> PropagatorType;
   PropagatorType propagationFunctor;
+  propagationFunctor.SetAcceptanceTest(&acceptanceTest);
+  propagationFunctor.SetPatchDistanceFunctor(&patchDistanceFunctor);
+  propagationFunctor.SetProcessFunctor(&processFunctor);
   propagationFunctor.SetPatchRadius(this->PatchRadius);
-  propagationFunctor.Propagate(nnField, &ssdFunctor, &processFunctor, &acceptanceTest);
 
-  typedef RandomSearch<TImage> RandomSearchType;
+  typedef RandomSearch<TImage, ProcessFunctorType, PatchDistanceFunctorType, AcceptanceTestType>
+    RandomSearchType;
   RandomSearchType randomSearcher;
   randomSearcher.SetImage(this->Image);
+  randomSearcher.SetPatchDistanceFunctor(&patchDistanceFunctor);
+  randomSearcher.SetProcessFunctor(&processFunctor);
+  randomSearcher.SetAcceptanceTest(&acceptanceTest);
+  //////////////////// The things above this block should probably be passed into this class
 
   // Setup the PatchMatch functor. Use a generic (parent class) AcceptanceTest.
-  patchMatchFunctor->SetPatchRadius(this->PatchRadius);
   patchMatchFunctor->SetIterations(5);
 
   for(unsigned int iteration = 0; iteration < this->Iterations; ++iteration)
@@ -134,9 +136,7 @@ void BDSInpainting<TImage>::Inpaint(TPatchMatchFunctor* const patchMatchFunctor,
     PatchMatchHelpers::WriteNNField(nnField.GetPointer(),
                                         "InitializedRandomNNField.mha"); // debug only
     // Give the PatchMatch functor the data
-    patchMatchFunctor->SetSourceMask(this->SourceMask);
-    patchMatchFunctor->SetTargetMask(this->TargetMask);
-    patchMatchFunctor->Compute(nnField, &propagationFunctor, &randomSearcher);
+    patchMatchFunctor->Compute(nnField, &propagationFunctor, &randomSearcher, &processFunctor);
 
     PatchMatchHelpers::WriteNNField(nnField.GetPointer(), "PatchMatchNNField.mha");
 

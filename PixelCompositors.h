@@ -19,7 +19,7 @@
 #ifndef PixelCompositors_H
 #define PixelCompositors_H
 
-class PixelCompositorAverage
+struct PixelCompositorAverage
 {
   /** Composite by averaging pixels. */
   template <typename TPixel>
@@ -32,7 +32,7 @@ class PixelCompositorAverage
   }
 };
 
-class PixelCompositorWeightedAverage
+struct PixelCompositorWeightedAverage
 {
   /** Composite by averaging pixels. */
   template <typename TPixel>
@@ -73,7 +73,7 @@ class PixelCompositorWeightedAverage
   }
 };
 
-class PixelCompositorClosestToAverage
+struct PixelCompositorClosestToAverage
 {
   /** Composite by averaging pixels. */
   template <typename TPixel>
@@ -89,7 +89,7 @@ class PixelCompositorClosestToAverage
   }
 };
 
-class PixelCompositorBestPatch
+struct PixelCompositorBestPatch
 {
   /** Composite by averaging pixels. */
   template <typename TPixel>
