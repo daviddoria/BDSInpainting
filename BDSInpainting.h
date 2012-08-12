@@ -46,7 +46,8 @@ public:
   typedef InpaintingAlgorithm<TImage> Superclass;
 
   /** Compute the nn-field for the target pixels and then composite the patches.*/
-  void Inpaint();
+  template <typename TPatchMatchFunctor, typename TCompositor>
+  void Inpaint(TPatchMatchFunctor* const patchMatchFunctor, TCompositor* compositor);
 
 };
 

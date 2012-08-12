@@ -45,7 +45,9 @@ BDSInpainting<TImage>::BDSInpainting() : InpaintingAlgorithm<TImage>()
 }
 
 template <typename TImage>
-void BDSInpainting<TImage>::Inpaint()
+template <typename TPatchMatchFunctor, typename TCompositor>
+void BDSInpainting<TImage>::Inpaint(TPatchMatchFunctor* const patchMatchFunctor,
+                                    TCompositor* compositor)
 {
   assert(this->Image->GetLargestPossibleRegion().GetSize()[0] > 0);
   assert(this->SourceMask->GetLargestPossibleRegion().GetSize()[0] > 0);
@@ -78,32 +80,31 @@ void BDSInpainting<TImage>::Inpaint()
                                         "InitializedKnownRegionNNField.mha"); // debug only
 
     // Initialize the NNField in the target region
-    InitializerRandom<typename std::remove_pointer<decltype(this->PatchMatchFunctor
-                            ->GetPatchDistanceFunctor())>::type> randomInitializer;
+    InitializerRandom<PatchDistanceFunctorType> randomInitializer;
     randomInitializer.SetTargetMask(this->TargetMask);
     randomInitializer.SetSourceMask(this->SourceMask);
-    randomInitializer.SetPatchDistanceFunctor(this->PatchMatchFunctor->GetPatchDistanceFunctor());
+    randomInitializer.SetPatchDistanceFunctor(patchMatchFunctor->GetPatchDistanceFunctor());
     randomInitializer.SetPatchRadius(this->PatchRadius);
     randomInitializer.Initialize(matchImage);
 
     PatchMatchHelpers::WriteNNField(matchImage.GetPointer(),
                                         "InitializedRandomNNField.mha"); // debug only
     // Give the PatchMatch functor the data
-    this->PatchMatchFunctor->SetSourceMask(this->SourceMask);
-    this->PatchMatchFunctor->SetTargetMask(this->TargetMask);
-    this->PatchMatchFunctor->SetInitialNNField(matchImage);
-    this->PatchMatchFunctor->Compute();
+    patchMatchFunctor->SetSourceMask(this->SourceMask);
+    patchMatchFunctor->SetTargetMask(this->TargetMask);
+    patchMatchFunctor->SetInitialNNField(matchImage);
+    patchMatchFunctor->Compute();
 
-    PatchMatchHelpers::WriteNNField(this->PatchMatchFunctor->GetOutput(), "PatchMatchNNField.mha");
+    PatchMatchHelpers::WriteNNField(patchMatchFunctor->GetOutput(), "PatchMatchNNField.mha");
 
     // Update the target pixels
-    this->CompositorFunctor->SetTargetMask(this->TargetMask);
-    this->CompositorFunctor->SetImage(currentImage);
-    this->CompositorFunctor->SetPatchRadius(this->PatchRadius);
-    this->CompositorFunctor->SetNearestNeighborField(this->PatchMatchFunctor->GetOutput());
-    this->CompositorFunctor->Compute();
+    compositor->SetTargetMask(this->TargetMask);
+    compositor->SetImage(currentImage);
+    compositor->SetPatchRadius(this->PatchRadius);
+    compositor->SetNearestNeighborField(this->PatchMatchFunctor->GetOutput());
+    compositor->Compute();
 
-    ITKHelpers::DeepCopy(this->CompositorFunctor->GetOutput(), currentImage.GetPointer());
+    ITKHelpers::DeepCopy(compositor->GetOutput(), currentImage.GetPointer());
   }
 
   ITKHelpers::DeepCopy(currentImage.GetPointer(), this->Output.GetPointer());

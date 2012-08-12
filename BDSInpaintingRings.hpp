@@ -109,19 +109,16 @@ void BDSInpaintingRings<TImage>::Inpaint()
 //   typedef ValidMaskValidScoreNeighbors NeighborFunctorType;
 //   ValidMaskValidScoreNeighbors neighborFunctor(nnField, this->SourceMask);
 
-  typedef ProcessTargetPixels ProcessFunctorType;
-  ProcessFunctorType processFunctor;
-  
-  typedef PropagatorForwardBackward<SSDFunctorType, NeighborFunctorType,
-            ProcessFunctorType, AcceptanceTestType> PropagatorType;
-  PropagatorType propagationFunctor;
-  propagationFunctor.SetProcessFunctor(&processFunctor);
-  propagationFunctor.SetAcceptanceTest(&acceptanceTest);
-  //propagationFunctor.SetNeighborFunctor(&neighborFunctor); // This is not necessary with PropagatorForwardBackward as it internally uses Forward and then Backwards neighbors
-  propagationFunctor.Propagate(nnField);
+  typedef ProcessValidMaskPixels ProcessFunctorType;
+  ProcessFunctorType processFunctor(this->TargetMask);
 
   typedef RandomSearch<TImage> RandomSearchType;
   RandomSearchType randomSearcher;
+
+  typedef PropagatorForwardBackward PropagatorType;
+  PropagatorType propagationFunctor;
+  propagationFunctor.SetPatchRadius(this->PatchRadius);
+  propagationFunctor.Propagate(nnField, &ssdFunctor, &acceptanceTest, &randomSearcher);
 
   // Setup the PatchMatch functor. Use a generic (parent class) AcceptanceTest.
   PatchMatch patchMatchFunctor;
@@ -220,19 +217,17 @@ void BDSInpaintingRings<TImage>::Inpaint()
 
     acceptanceTest.SetNeighborHistogramMultiplier(histogramMultiplier);
 
-    this->PatchMatchFunctor->SetInitialNNField(nnField);
-    this->PatchMatchFunctor->Compute();
+    patchMatchFunctor.Compute(nnField, &propagationFunctor, &randomSearcher);
 
-    PatchMatchHelpers::WriteNNField(this->PatchMatchFunctor->GetOutput(),
+    PatchMatchHelpers::WriteNNField(nnField.GetPointer(),
                                     Helpers::GetSequentialFileName("BDSInpaintingRings_PropagatedNNField",
                                                                    iteration, "mha"));
 
-    ITKHelpers::DeepCopy(this->PatchMatchFunctor->GetOutput(), nnField.GetPointer());
     histogramMultiplier += histogramMultiplierStep;
     iteration++;
   }
 
-  PatchMatchHelpers::WriteNNField(this->PatchMatchFunctor->GetOutput(),
+  PatchMatchHelpers::WriteNNField(nnField.GetPointer(),
                                   "BDSInpaintingRings_BoundaryNNField.mha");
   exit(-1); // TODO: remove this 
   // Keep track of which ring we are on

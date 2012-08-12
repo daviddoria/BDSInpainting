@@ -31,8 +31,8 @@
 // STL
 #include <ctime>
 
-template <typename TImage>
-Compositor<TImage>::Compositor() : PatchRadius(7),
+template <typename TImage, typename TPixelCompositor>
+Compositor<TImage, TPixelCompositor>::Compositor() : PatchRadius(7),
    CompositingMethod(WEIGHTED_AVERAGE)
 {
   this->Output = TImage::New();
@@ -40,32 +40,32 @@ Compositor<TImage>::Compositor() : PatchRadius(7),
   this->TargetMask = Mask::New();
 }
 
-template <typename TImage>
-TImage* Compositor<TImage>::GetOutput()
+template <typename TImage, typename TPixelCompositor>
+TImage* Compositor<TImage, TPixelCompositor>::GetOutput()
 {
   return this->Output;
 }
 
-template <typename TImage>
-void Compositor<TImage>::SetPatchRadius(const unsigned int patchRadius)
+template <typename TImage, typename TPixelCompositor>
+void Compositor<TImage, TPixelCompositor>::SetPatchRadius(const unsigned int patchRadius)
 {
   this->PatchRadius = patchRadius;
 }
 
-template <typename TImage>
-void Compositor<TImage>::SetImage(TImage* const image)
+template <typename TImage, typename TPixelCompositor>
+void Compositor<TImage, TPixelCompositor>::SetImage(TImage* const image)
 {
   ITKHelpers::DeepCopy(image, this->Image.GetPointer());
 }
 
-template <typename TImage>
-void Compositor<TImage>::SetTargetMask(Mask* const mask)
+template <typename TImage, typename TPixelCompositor>
+void Compositor<TImage, TPixelCompositor>::SetTargetMask(Mask* const mask)
 {
   this->TargetMask->DeepCopyFrom(mask);
 }
 
-template <typename TImage>
-void Compositor<TImage>::Compute()
+template <typename TImage, typename TPixelCompositor>
+void Compositor<TImage, TPixelCompositor>::Compute()
 {
   // The contribution of each pixel q to the error term (d_cohere) = 1/N_T \sum_{i=1}^m (S(p_i) - T(q))^2
   // To find the best color T(q) (iterative update rule), differentiate with respect to T(q),
@@ -163,7 +163,7 @@ void Compositor<TImage>::Compute()
 
     // Select a method to construct new pixel
     //std::cout << "Compositing..." << std::endl;
-    typename TImage::PixelType newValue = Composite(contributingPixels, contributingScores);
+    typename TImage::PixelType newValue = TPixelCompositor::Composite(contributingPixels, contributingScores);
     //std::cout << "Done compositing." << std::endl;
 
     updatedImage->SetPixel(currentPixel, newValue);
@@ -178,115 +178,8 @@ void Compositor<TImage>::Compute()
   std::cout << "Finished Compositor::Compute()." << std::endl;
 }
 
-template <typename TImage>
-void Compositor<TImage>::SetCompositingMethod(const CompositingMethodEnum& compositingMethod)
-{
-  this->CompositingMethod = compositingMethod;
-}
-
-/** Composite using the specified CompositingMethod. */
-template <typename TImage>
-typename TImage::PixelType Compositor<TImage>::Composite(
-    const std::vector<typename TImage::PixelType>& contributingPixels,
-    const std::vector<float>& contributingScores)
-{
-  assert(contributingPixels.size() == contributingScores.size());
-  assert(contributingPixels.size() > 0);
-
-  if(this->CompositingMethod == AVERAGE)
-  {
-    return CompositeAverage(contributingPixels);
-  }
-  else if(this->CompositingMethod == WEIGHTED_AVERAGE)
-  {
-    return CompositeWeightedAverage(contributingPixels, contributingScores);
-  }
-  else if(this->CompositingMethod == CLOSEST_TO_AVERAGE)
-  {
-    return CompositeClosestToAverage(contributingPixels, contributingScores);
-  }
-  else if(this->CompositingMethod == BEST_PATCH)
-  {
-    return CompositeBestPatch(contributingPixels, contributingScores);
-  }
-  else
-  {
-    throw std::runtime_error("An invalid CompositingMethod was selected!");
-  }
-}
-
-/** Composite by averaging pixels. */
-template <typename TImage>
-typename TImage::PixelType Compositor<TImage>::CompositeAverage(
-  const std::vector<typename TImage::PixelType>& contributingPixels)
-{
-  typename TImage::PixelType newValue = Statistics::Average(contributingPixels);
-  return newValue;
-}
-
-/** Composite by weighted averaging. */
-template <typename TImage>
-typename TImage::PixelType Compositor<TImage>::CompositeWeightedAverage(
-    const std::vector<typename TImage::PixelType>& contributingPixels,
-    const std::vector<float>& contributingScores)
-{
-  // If there is only one element, simply return it.
-  if(contributingScores.size() == 1)
-  {
-    return contributingPixels[0];
-  }
-
-  // The weights should be inversely proportional to the patch errors/scores.
-  // That is, a patch with a high error should get a low weight. We accomplish this by
-  // making the weight equal to 1 - (value - min) / |range|
-
-  float minValue = *std::min_element(contributingScores.begin(), contributingScores.end());
-  float maxValue = *std::max_element(contributingScores.begin(), contributingScores.end());
-  float range = maxValue - minValue;
-  // If the range is zero, all elements are the same so just return the first one
-  if(range == 0.0f)
-  {
-    return contributingPixels[0];
-  }
-
-  std::vector<float> weights(contributingScores.size());
-  for(unsigned int i = 0; i < contributingScores.size(); ++i)
-  {
-    weights[i] = 1.0f - (contributingScores[i] - minValue) / range;
-  }
-
-  // Make the weights sum to 1
-  Helpers::NormalizeVectorInPlace(weights);
-
-  typename TImage::PixelType newValue = Helpers::WeightedAverage(contributingPixels, weights);
-  return newValue;
-}
-
-template <typename TImage>
-typename TImage::PixelType Compositor<TImage>::CompositeClosestToAverage(
-    const std::vector<typename TImage::PixelType>& contributingPixels,
-    const std::vector<float>& contributingScores)
-{
-  // Use the pixel closest to the average pixel
-  typename TImage::PixelType averagePixel = Statistics::Average(contributingPixels);
-  unsigned int patchId = ITKHelpers::ClosestValueIndex(contributingPixels, averagePixel);
-  typename TImage::PixelType newValue = contributingPixels[patchId];
-  return newValue;
-}
-
-template <typename TImage>
-typename TImage::PixelType Compositor<TImage>::CompositeBestPatch(
-    const std::vector<typename TImage::PixelType>& contributingPixels,
-    const std::vector<float>& contributingScores)
-{
-  // Take the pixel from the best matching patch
-  unsigned int patchId = Helpers::argmin(contributingScores);
-  typename TImage::PixelType newValue = contributingPixels[patchId];
-  return newValue;
-}
-
-template <typename TImage>
-void Compositor<TImage>::SetNearestNeighborField(NNFieldType* const nnField)
+template <typename TImage, typename TPixelCompositor>
+void Compositor<TImage, TPixelCompositor>::SetNearestNeighborField(NNFieldType* const nnField)
 {
   this->NearestNeighborField = nnField;
 }
