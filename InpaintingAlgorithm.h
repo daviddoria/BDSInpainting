@@ -30,9 +30,8 @@
 #include <PatchMatch/PatchMatch.h>
 #include <Compositor.h>
 
-/** This class takes a nearest neighbor field and a target mask and
-  * uses the coherence term from the paper "Bidirectional Similarity" to perform inpainting.
-  * By optionally using more than 1 iteration, the inpainting quality should improve. */
+/** This class provides an interface which accepts and stores typical paramaters to an inpainting
+  * algorithm (masks, image, patch radius, etc). */
 template <typename TImage>
 class InpaintingAlgorithm
 {
@@ -40,12 +39,6 @@ public:
 
   /** Constructor. */
   InpaintingAlgorithm();
-
-  /** Set the compositing method to use. */
-  void SetCompositor(Compositor<TImage>* compositor);
-
-  /** Compute the nn-field for the target pixels and then composite the patches.*/
-  virtual void Inpaint() = 0;
 
   /** Get the resulting inpainted image. */
   TImage* GetOutput();
@@ -85,9 +78,6 @@ protected:
 
   /** The mask where fully 'valid' patches are allowed to be matches. */
   Mask::Pointer SourceMask;
-
-  /** The compositor to use. */
-  Compositor<TImage>* CompositorFunctor;
 };
 
 #include "InpaintingAlgorithm.hpp"

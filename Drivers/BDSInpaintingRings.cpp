@@ -43,6 +43,7 @@
 #include "AcceptanceTestNeighborHistogram.h"
 #include "InitializerRandom.h"
 #include "Propagator.h"
+#include "PixelCompositors.h"
 #include "RandomSearch.h"
 
 int main(int argc, char*argv[])
@@ -133,9 +134,7 @@ int main(int argc, char*argv[])
   bdsInpainting.SetIterations(1);
   //bdsInpainting.SetIterations(4);
 
-  Compositor<ImageType> compositor;
-  compositor.SetCompositingMethod(Compositor<ImageType>::AVERAGE);
-  bdsInpainting.SetCompositor(&compositor);
+  Compositor<ImageType, PixelCompositorAverage> compositor;
   bdsInpainting.Inpaint();
 
   ITKHelpers::WriteRGBImage(bdsInpainting.GetOutput(), outputFilename);

@@ -32,8 +32,7 @@
 #include <ctime>
 
 template <typename TImage, typename TPixelCompositor>
-Compositor<TImage, TPixelCompositor>::Compositor() : PatchRadius(7),
-   CompositingMethod(WEIGHTED_AVERAGE)
+Compositor<TImage, TPixelCompositor>::Compositor() : PatchRadius(0)
 {
   this->Output = TImage::New();
   this->Image = TImage::New();
@@ -65,13 +64,16 @@ void Compositor<TImage, TPixelCompositor>::SetTargetMask(Mask* const mask)
 }
 
 template <typename TImage, typename TPixelCompositor>
-void Compositor<TImage, TPixelCompositor>::Compute()
+void Compositor<TImage, TPixelCompositor>::Composite()
 {
   // The contribution of each pixel q to the error term (d_cohere) = 1/N_T \sum_{i=1}^m (S(p_i) - T(q))^2
   // To find the best color T(q) (iterative update rule), differentiate with respect to T(q),
   // set to 0, and solve for T(q):
   // T(q) = \frac{1}{m} \sum_{i=1}^m S(p_i)
 
+  assert(this->NearestNeighborField);
+  assert(this->TargetMask);
+  assert(this->PatchRadius > 0);
 //   std::cout << "Compositor::Compute()..." << std::endl;
 //   ITKHelpers::WriteRGBImage(oldImage, "Compositor_Compute_OldImage.png");
 //   ITKHelpers::WriteImage(targetMask, "Compositor_Compute_TargetMask.png");

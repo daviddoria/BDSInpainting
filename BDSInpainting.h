@@ -47,7 +47,7 @@ public:
 
   /** Compute the nn-field for the target pixels and then composite the patches.*/
   template <typename TPatchMatchFunctor, typename TCompositor>
-  void Inpaint(TPatchMatchFunctor* const patchMatchFunctor, TCompositor* compositor);
+  void Inpaint(TPatchMatchFunctor* const patchMatchFunctor, TCompositor* const compositor);
 
 };
 

@@ -28,6 +28,7 @@
 #include "InitializerNeighborHistogram.h"
 #include "AcceptanceTestNeighborHistogram.h"
 #include "Verifier.h"
+#include "PixelCompositors.h"
 
 // Submodules
 #include <PatchMatch/PropagatorForwardBackward.h>
@@ -55,18 +56,8 @@ void BDSInpaintingRings<TImage>::Inpaint()
   typename TImage::Pointer currentImage = TImage::New();
   ITKHelpers::DeepCopy(this->Image.GetPointer(), currentImage.GetPointer());
 
-  // The pixels from which information is allowed to propagate (everywhere except the target region)
-  // (This is computed again at each iteration through the loop)
-  Mask::Pointer currentPropagationMask = Mask::New();
-  // We trust the information everywhere except in the hole
-  currentPropagationMask->DeepCopyFrom(currentTargetMask);
-  currentPropagationMask->InvertData();
-
-  ITKHelpers::WriteImage(currentPropagationMask.GetPointer(),
-                         "BDSInpaintingRings_InitialPropagationMask.png");
-
-  // Compute the NN-field in the PatchRadius thick region around the target region. This region
-  // does not have a trivial (exactly itself) NNField because each patch centered on one of these
+  // We first need to compute the NN-field in the PatchRadius thick region around the target region.
+  // This region does not have a trivial (exactly itself) NNField because each patch centered on one of these
   // pixels has some pixels that are in the target region.
   Mask::Pointer expandedTargetMask = Mask::New();
   expandedTargetMask->DeepCopyFrom(this->TargetMask);
@@ -92,6 +83,7 @@ void BDSInpaintingRings<TImage>::Inpaint()
   ITKHelpers::ITKImageToHSVImage(currentImage.GetPointer(), hsvImage.GetPointer());
   ITKHelpers::WriteImage(hsvImage.GetPointer(), "HSV.mha");
 
+  //////////////////// The things in this block should probably be passed into this class
   // Setup the patch distance functor
   typedef SSD<TImage> SSDFunctorType;
   SSDFunctorType ssdFunctor;
@@ -106,26 +98,26 @@ void BDSInpaintingRings<TImage>::Inpaint()
   acceptanceTest.SetPatchRadius(this->PatchRadius);
   acceptanceTest.SetNeighborHistogramMultiplier(2.0f);
 
-//   typedef ValidMaskValidScoreNeighbors NeighborFunctorType;
-//   ValidMaskValidScoreNeighbors neighborFunctor(nnField, this->SourceMask);
-
   typedef ProcessValidMaskPixels ProcessFunctorType;
   ProcessFunctorType processFunctor(this->TargetMask);
-
-  typedef RandomSearch<TImage> RandomSearchType;
-  RandomSearchType randomSearcher;
 
   typedef PropagatorForwardBackward PropagatorType;
   PropagatorType propagationFunctor;
   propagationFunctor.SetPatchRadius(this->PatchRadius);
-  propagationFunctor.Propagate(nnField, &ssdFunctor, &acceptanceTest, &randomSearcher);
+  propagationFunctor.Propagate(nnField, &ssdFunctor, &processFunctor, &acceptanceTest);
+
+  typedef RandomSearch<TImage> RandomSearchType;
+  RandomSearchType randomSearcher;
+  randomSearcher.SetImage(this->Image);
 
   // Setup the PatchMatch functor. Use a generic (parent class) AcceptanceTest.
   PatchMatch patchMatchFunctor;
   patchMatchFunctor.SetPatchRadius(this->PatchRadius);
   patchMatchFunctor.SetIterations(5);
-  patchMatchFunctor.Compute(nnField, propagationFunctor, randomSearcher);
+  patchMatchFunctor.Compute(nnField, &propagationFunctor, &randomSearcher);
 
+  //////////////////// The things in the above block should probably be passed into this class
+  
   // Initialize the NNField in the known region
   InitializerKnownRegion initializerKnownRegion;
   initializerKnownRegion.SetSourceMask(this->SourceMask);
@@ -236,13 +228,6 @@ void BDSInpaintingRings<TImage>::Inpaint()
   // Perform ring-at-a-time inpainting
   while(currentTargetMask->HasValidPixels())
   {
-    // We trust the information everywhere except in the hole
-    currentPropagationMask->DeepCopyFrom(currentTargetMask);
-    currentPropagationMask->InvertData();
-
-    //ITKHelpers::WriteSequentialImage(currentPropagationMask.GetPointer(),
-//     "BDSRings_CurrentPropagationMask", ringCounter, 4, "png");
-
     // Get the inside boundary of the target region
     Mask::BoundaryImageType::Pointer boundaryImage = Mask::BoundaryImageType::New();
     // In the resulting boundary image, the boundary will be 255.
@@ -272,7 +257,8 @@ void BDSInpaintingRings<TImage>::Inpaint()
     internalBDSInpaintingFunctor.SetPatchRadius(this->PatchRadius);
     internalBDSInpaintingFunctor.SetTargetMask(boundaryMask);
     internalBDSInpaintingFunctor.SetSourceMask(this->SourceMask);
-    internalBDSInpaintingFunctor.Inpaint();
+    Compositor<TImage, PixelCompositorAverage> compositor;
+    internalBDSInpaintingFunctor.Inpaint(&patchMatchFunctor, &compositor);
 
     ITKHelpers::WriteSequentialImage(internalBDSInpaintingFunctor.GetOutput(),
                                      "BDSRings_InpaintedRing", ringCounter, 4, "png");

@@ -39,9 +39,8 @@
 
 template <typename TImage>
 InpaintingAlgorithm<TImage>::InpaintingAlgorithm() :
-          Iterations(5),
-          PatchRadius(7),
-          CompositorFunctor(NULL)
+          Iterations(0),
+          PatchRadius(0)
 {
   this->Output = TImage::New();
   this->Image = TImage::New();
@@ -83,12 +82,6 @@ template <typename TImage>
 void InpaintingAlgorithm<TImage>::SetTargetMask(Mask* const mask)
 {
   this->TargetMask->DeepCopyFrom(mask);
-}
-
-template <typename TImage>
-void InpaintingAlgorithm<TImage>::SetCompositor(Compositor<TImage>* compositor)
-{
-  this->CompositorFunctor = compositor;
 }
 
 #endif
