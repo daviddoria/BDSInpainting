@@ -38,6 +38,8 @@
 #include <PatchMatch/AcceptanceTestComposite.h>
 #include <PatchMatch/Process.h>
 
+#include <Helpers/Helpers.h>
+
 template <typename TImage>
 BDSInpaintingRings<TImage>::BDSInpaintingRings() : InpaintingAlgorithm<TImage>()
 {
@@ -176,56 +178,28 @@ void BDSInpaintingRings<TImage>::Inpaint()
 
   PatchMatchHelpers::WriteNNField(nnField.GetPointer(), "BDSInpaintingRings_FirstPatchMatch.mha");
 
-  typedef VerifierNeighborHistogram<HSVImageType> VerifyFunctorType;
-  VerifyFunctorType verifyFunctor;
-  verifyFunctor.SetImage(hsvImage);
-  verifyFunctor.SetNeighborHistogramMultiplier(2.0f);
-  verifyFunctor.SetRangeMin(0.0f);
-  verifyFunctor.SetRangeMax(1.0f);
-  verifyFunctor.SetMatchImage(nnField);
-  verifyFunctor.SetPatchRadius(this->PatchRadius);
-
-  Verifier<VerifyFunctorType> verifier;
-  verifier.SetMask(outsideTargetMask);
-  verifier.SetVerifyFunctor(&verifyFunctor);
-  verifier.Verify(nnField);
-
-  PatchMatchHelpers::WriteNNField(nnField.GetPointer(),
-                                    "BDSInpaintingRings_VerifiedNNField.mha");
-
   float histogramMultiplierInitial = 2.0f;
   float histogramMultiplierStep = 0.2f;
   float histogramMultiplier = histogramMultiplierInitial;
 
   unsigned int iteration = 0;
-  auto testNotVerifiedLambda = [](const Match& queryMatch)
+  auto testHasVerifiedMatch = [](const MatchSet& queryMatchSet)
   {
-    if(!queryMatch.IsVerified())
-    {
-      return true;
-    }
-    return false;
+    return !queryMatchSet.HasVerifiedMatch();
   };
 
-  typedef ProcessUnverifiedTargetPixels ProcessUnverifiedTargetPixelsFunctorType;
-  ProcessUnverifiedTargetPixelsFunctorType processUnverifiedTargetPixelsFunctor(outsideTargetMask, nnField);
-
   while(PatchMatchHelpers::CountTestedPixels(nnField.GetPointer(),
-          outsideTargetMask, testNotVerifiedLambda) > 0)
+          outsideTargetMask, testHasVerifiedMatch) > 0)
   {
     std::cout << "There are "
               << PatchMatchHelpers::CountTestedPixels(nnField.GetPointer(),
-                                                      outsideTargetMask, testNotVerifiedLambda)
-              << " unvalidated pixels remaining." << std::endl;
-
-    verifyFunctor.SetNeighborHistogramMultiplier(histogramMultiplier);
+                                                      outsideTargetMask, testHasVerifiedMatch)
+              << " pixels without a verified match remaining." << std::endl;
 
     neighborHistogramAcceptanceTest.SetNeighborHistogramMultiplier(histogramMultiplier);
 
     patchMatchFunctor.Compute(nnField, &propagationFunctor, &randomSearcher,
-                              &processUnverifiedTargetPixelsFunctor);
-
-    verifier.Verify(nnField);
+                              &processFunctor);
 
     PatchMatchHelpers::WriteNNField(nnField.GetPointer(),
                                     Helpers::GetSequentialFileName("BDSInpaintingRings_PropagatedNNField",

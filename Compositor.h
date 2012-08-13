@@ -28,6 +28,8 @@
 // Submodules
 #include <Mask/Mask.h>
 
+#include <PatchMatch/PatchMatchHelpers.h>
+
 class CompositorParent
 {
   virtual void Composite() = 0;
@@ -43,10 +45,8 @@ public:
   /** Constructor. */
   Compositor();
 
-  typedef itk::Image<Match, 2> NNFieldType;
-
   /** Set the nearest neighbor field to use. */
-  void SetNearestNeighborField(NNFieldType* const nnField);
+  void SetNearestNeighborField(PatchMatchHelpers::NNFieldType* const nnField);
 
   /** Get the resulting inpainted image. */
   TImage* GetOutput();
@@ -78,7 +78,7 @@ protected:
   Mask::Pointer TargetMask;
 
   /** The nearest neighbor field to use. */
-  NNFieldType* NearestNeighborField;
+  PatchMatchHelpers::NNFieldType* NearestNeighborField;
 };
 
 #include "Compositor.hpp"
