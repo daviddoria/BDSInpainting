@@ -140,7 +140,7 @@ void Compositor<TImage, TPixelCompositor>::Composite()
       Match bestMatch = this->NearestNeighborField->GetPixel(containingRegionCenter);
       assert(bestMatch.IsValid());
 
-      itk::ImageRegion<2> bestMatchRegion = bestMatch.Region;
+      itk::ImageRegion<2> bestMatchRegion = bestMatch.GetRegion();
 
       //assert(fullRegion.IsInside(bestMatchRegion));
 
@@ -156,7 +156,7 @@ void Compositor<TImage, TPixelCompositor>::Composite()
 
       contributingPixels[containingPatchId] = this->Image->GetPixel(correspondingPixel);
 
-      contributingScores[containingPatchId] = bestMatch.Score;
+      contributingScores[containingPatchId] = bestMatch.GetScore();
 
     } // end loop over containing patches
 

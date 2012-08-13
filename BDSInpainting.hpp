@@ -109,7 +109,7 @@ void BDSInpainting<TImage>::Inpaint(TPatchMatchFunctor* const patchMatchFunctor,
   propagationFunctor.SetProcessFunctor(&processFunctor);
   propagationFunctor.SetPatchRadius(this->PatchRadius);
 
-  typedef RandomSearch<TImage, ProcessFunctorType, PatchDistanceFunctorType, AcceptanceTestType>
+  typedef RandomSearch<TImage, PatchDistanceFunctorType, AcceptanceTestType>
     RandomSearchType;
   RandomSearchType randomSearcher;
   randomSearcher.SetImage(this->Image);

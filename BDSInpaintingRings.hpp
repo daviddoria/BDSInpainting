@@ -147,10 +147,7 @@ void BDSInpaintingRings<TImage>::Inpaint()
   propagationFunctor.SetPatchDistanceFunctor(&patchDistanceFunctor);
   propagationFunctor.SetProcessFunctor(&processFunctor);
 
-  // This is templated on the parent class "Process" so the process functor can be
-  // changed to one of a different type later
-  //typedef RandomSearch<TImage, ProcessFunctorType, PatchDistanceFunctorType, AcceptanceTestType>
-  typedef RandomSearch<TImage, Process, PatchDistanceFunctorType, AcceptanceTestType>
+  typedef RandomSearch<TImage, PatchDistanceFunctorType, AcceptanceTestType>
     RandomSearchType;
   RandomSearchType randomSearcher;
   randomSearcher.SetImage(this->Image);
@@ -203,16 +200,16 @@ void BDSInpaintingRings<TImage>::Inpaint()
   unsigned int iteration = 0;
   auto testNotVerifiedLambda = [](const Match& queryMatch)
   {
-    if(!queryMatch.Verified)
+    if(!queryMatch.IsVerified())
     {
       return true;
     }
     return false;
   };
 
-  typedef ProcessInvalidTarget ProcessInvalidTargetFunctorType;
-  ProcessInvalidTargetFunctorType processInvalidTargetFunctor(outsideTargetMask, nnField);
-  
+  typedef ProcessUnverifiedTargetPixels ProcessUnverifiedTargetPixelsFunctorType;
+  ProcessUnverifiedTargetPixelsFunctorType processUnverifiedTargetPixelsFunctor(outsideTargetMask, nnField);
+
   while(PatchMatchHelpers::CountTestedPixels(nnField.GetPointer(),
           outsideTargetMask, testNotVerifiedLambda) > 0)
   {
@@ -221,11 +218,13 @@ void BDSInpaintingRings<TImage>::Inpaint()
                                                       outsideTargetMask, testNotVerifiedLambda)
               << " unvalidated pixels remaining." << std::endl;
 
+    verifyFunctor.SetNeighborHistogramMultiplier(histogramMultiplier);
+
     neighborHistogramAcceptanceTest.SetNeighborHistogramMultiplier(histogramMultiplier);
 
-    patchMatchFunctor.Compute(nnField, &propagationFunctor, &randomSearcher, &processInvalidTargetFunctor);
+    patchMatchFunctor.Compute(nnField, &propagationFunctor, &randomSearcher,
+                              &processUnverifiedTargetPixelsFunctor);
 
-    verifyFunctor.SetNeighborHistogramMultiplier(histogramMultiplier);
     verifier.Verify(nnField);
 
     PatchMatchHelpers::WriteNNField(nnField.GetPointer(),
