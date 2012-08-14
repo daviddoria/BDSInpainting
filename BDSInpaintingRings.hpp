@@ -179,12 +179,12 @@ void BDSInpaintingRings<TImage>::Inpaint()
 
   // Setup the PatchMatch functor
   PatchMatch patchMatchFunctor;
-  patchMatchFunctor.SetIterations(3);
+  patchMatchFunctor.SetIterations(1);
   //patchMatchFunctor.Compute(nnField, &propagationFunctor, &randomSearcher, processFunctor); // This will be done in the loop
 
   PatchMatchHelpers::WriteNNField(nnField.GetPointer(), "BDSInpaintingRings_FirstPatchMatch.mha");
 
-  float histogramMultiplierInitial = 4.0f;
+  float histogramMultiplierInitial = 5.0f;
   float histogramMultiplierStep = 0.2f;
   float histogramMultiplier = histogramMultiplierInitial;
 
@@ -256,7 +256,13 @@ void BDSInpaintingRings<TImage>::Inpaint()
                  {
                    std::cout << "Acceptance test " << whichFailed << " failed." << std::endl;
                 };
-  acceptanceTest.WhichFailedSignal.connect(outputWhichFailed);
+  //acceptanceTest.WhichFailedSignal.connect(outputWhichFailed);
+
+  auto outputFailedScore = [](const float failedScore)
+                 {
+                   std::cout << "Acceptance test failed with score " << failedScore << std::endl;
+                };
+  //acceptanceTest.FailedScoreSignal.connect(outputFailedScore);
 
   // Loop through histogramMultipliers again, this time only performing propagation (no random search)
   std::cout << "Starting propagation only phase." << std::endl;
