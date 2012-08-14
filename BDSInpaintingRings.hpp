@@ -123,6 +123,7 @@ void BDSInpaintingRings<TImage>::Inpaint()
 
   typedef AcceptanceTestSSD AcceptanceTestSSDType;
   AcceptanceTestSSDType acceptanceTestSSD;
+  acceptanceTestSSD.SetIncludeInScore(false);
 
   typedef AcceptanceTestSourceRegion AcceptanceTestSourceRegionType;
   AcceptanceTestSourceRegion acceptanceTestSourceRegion(this->SourceMask);
@@ -133,7 +134,7 @@ void BDSInpaintingRings<TImage>::Inpaint()
   neighborHistogramAcceptanceTest.SetRangeMin(0.0f);
   neighborHistogramAcceptanceTest.SetRangeMax(1.0f);
   neighborHistogramAcceptanceTest.SetPatchRadius(this->PatchRadius);
-  neighborHistogramAcceptanceTest.SetNeighborHistogramMultiplier(2.0f);
+  //neighborHistogramAcceptanceTest.SetNeighborHistogramMultiplier(2.0f); // this will be set in the loop
   neighborHistogramAcceptanceTest.SetNumberOfBinsPerDimension(30);
 
   typedef AcceptanceTestComposite AcceptanceTestType;
@@ -179,11 +180,11 @@ void BDSInpaintingRings<TImage>::Inpaint()
   // Setup the PatchMatch functor
   PatchMatch patchMatchFunctor;
   patchMatchFunctor.SetIterations(5);
-  patchMatchFunctor.Compute(nnField, &propagationFunctor, &randomSearcher, processFunctor);
+  //patchMatchFunctor.Compute(nnField, &propagationFunctor, &randomSearcher, processFunctor); // This will be done in the loop
 
   PatchMatchHelpers::WriteNNField(nnField.GetPointer(), "BDSInpaintingRings_FirstPatchMatch.mha");
 
-  float histogramMultiplierInitial = 2.0f;
+  float histogramMultiplierInitial = 3.0f;
   float histogramMultiplierStep = 0.2f;
   float histogramMultiplier = histogramMultiplierInitial;
 
@@ -248,11 +249,15 @@ void BDSInpaintingRings<TImage>::Inpaint()
                                                testFunctor, operationFunctor);
       processFunctor = new ProcessUnverifiedValidMaskPixels(nnField, outsideTargetMask);
 
+      PatchMatchHelpers::WriteVerifiedPixels(nnField.GetPointer(), "VerifiedPixels.mha");
+
       histogramMultiplier = histogramMultiplierInitial;
     }
 
     iteration++;
   }
+
+  //propagationFunctor.
 
   PatchMatchHelpers::WriteNNField(nnField.GetPointer(),
                                   "BDSInpaintingRings_BoundaryNNField.mha");
