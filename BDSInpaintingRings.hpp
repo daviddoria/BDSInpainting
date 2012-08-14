@@ -179,12 +179,12 @@ void BDSInpaintingRings<TImage>::Inpaint()
 
   // Setup the PatchMatch functor
   PatchMatch patchMatchFunctor;
-  patchMatchFunctor.SetIterations(5);
+  patchMatchFunctor.SetIterations(3);
   //patchMatchFunctor.Compute(nnField, &propagationFunctor, &randomSearcher, processFunctor); // This will be done in the loop
 
   PatchMatchHelpers::WriteNNField(nnField.GetPointer(), "BDSInpaintingRings_FirstPatchMatch.mha");
 
-  float histogramMultiplierInitial = 3.0f;
+  float histogramMultiplierInitial = 4.0f;
   float histogramMultiplierStep = 0.2f;
   float histogramMultiplier = histogramMultiplierInitial;
 
@@ -213,52 +213,73 @@ void BDSInpaintingRings<TImage>::Inpaint()
     histogramMultiplier += histogramMultiplierStep;
     std::cout << "Increased histogramMultiplier to " << histogramMultiplier << std::endl;
 
-//     if(histogramMultiplier > 5)
-//     {
-//       typedef itk::Image<int, 2> ChannelImageType;
-//       ChannelImageType::Pointer xCoords = ChannelImageType::New();
-//       ITKHelpers::ExtractChannel(nnField.GetPointer(), 0, xCoords.GetPointer());
-// 
-//       ChannelImageType::Pointer medianFilteredXCoords = ChannelImageType::New();
-//       ITKHelpers::MedianFilter(xCoords.GetPointer(), medianFilteredXCoords.GetPointer());
-// 
-//       histogramMultiplier = histogramMultiplierInitial;
-//     }
-
     if(histogramMultiplier > 5)
     {
-      // Clear all matches for patches that still do not have a good (verified) match
-      // This means it remains from the random initialization.
-      auto testFunctor = [nnField](const itk::Index<2>& index)
-                                  {
-                                    // Don't process pixels that have a verified match
-                                    if(nnField->GetPixel(index).HasVerifiedMatch())
-                                    {
-                                      return false;
-                                    }
-                                    return true;
-                                  };
-      auto operationFunctor = [nnField](const itk::Index<2>& index)
-                                  {
-                                    MatchSet matchSet = nnField->GetPixel(index);
-                                    matchSet.Clear();
-                                    nnField->SetPixel(index, matchSet);
-                                  };
-
-      ITKHelpers::ApplyOperationToTestedPixels(nnField.GetPointer(),
-                                               testFunctor, operationFunctor);
-      processFunctor = new ProcessUnverifiedValidMaskPixels(nnField, outsideTargetMask);
-
-      PatchMatchHelpers::WriteVerifiedPixels(nnField.GetPointer(), "VerifiedPixels.mha");
-
-      histogramMultiplier = histogramMultiplierInitial;
+      break;
     }
 
     iteration++;
   }
 
-  //propagationFunctor.
+  // Clear all matches for patches that still do not have a good (verified) match
+  // This means it remains from the random initialization.
+  auto testFunctor = [nnField](const itk::Index<2>& index)
+                              {
+                                // Don't process pixels that have a verified match
+                                if(nnField->GetPixel(index).HasVerifiedMatch())
+                                {
+                                  return false;
+                                }
+                                return true;
+                              };
+  auto clearFunctor = [nnField](const itk::Index<2>& index)
+                              {
+                                MatchSet matchSet = nnField->GetPixel(index);
+                                matchSet.Clear();
+                                nnField->SetPixel(index, matchSet);
+                              };
 
+  ITKHelpers::ApplyOperationToTestedPixels(nnField.GetPointer(),
+                                            testFunctor, clearFunctor);
+
+  processFunctor = new ProcessUnverifiedValidMaskPixels(nnField, outsideTargetMask);
+
+  propagationFunctor.SetProcessFunctor(processFunctor);
+
+  PatchMatchHelpers::WriteVerifiedPixels(nnField.GetPointer(), "VerifiedPixels.mha");
+
+  histogramMultiplier = histogramMultiplierInitial;
+
+  propagationFunctor.GetAcceptanceTest()->RemoveAcceptanceTest(&acceptanceTestSSD);
+
+  auto outputWhichFailed = [](const unsigned int whichFailed)
+                 {
+                   std::cout << "Acceptance test " << whichFailed << " failed." << std::endl;
+                };
+  acceptanceTest.WhichFailedSignal.connect(outputWhichFailed);
+
+  // Loop through histogramMultipliers again, this time only performing propagation (no random search)
+  std::cout << "Starting propagation only phase." << std::endl;
+  while(PatchMatchHelpers::CountTestedPixels(nnField.GetPointer(),
+          outsideTargetMask, testHasVerifiedMatch) > 0)
+  {
+    std::cout << "Phase 2: There are "
+              << PatchMatchHelpers::CountTestedPixels(nnField.GetPointer(),
+                                                      outsideTargetMask, testHasVerifiedMatch)
+              << " pixels without a verified match remaining." << std::endl;
+
+    neighborHistogramAcceptanceTest.SetNeighborHistogramMultiplier(histogramMultiplier);
+
+    propagationFunctor.Propagate(nnField);
+
+    PatchMatchHelpers::WriteNNField(nnField.GetPointer(),
+                                    Helpers::GetSequentialFileName("BDSRings_NNField_PropOnly",
+                                                                   iteration, "mha"));
+    histogramMultiplier += histogramMultiplierStep;
+    std::cout << "Increased histogramMultiplier to " << histogramMultiplier << std::endl;
+
+    iteration++;
+  }
   PatchMatchHelpers::WriteNNField(nnField.GetPointer(),
                                   "BDSInpaintingRings_BoundaryNNField.mha");
   exit(-1); // TODO: remove this 
