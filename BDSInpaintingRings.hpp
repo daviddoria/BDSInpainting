@@ -83,6 +83,11 @@ void BDSInpaintingRings<TImage>::Inpaint()
   nnField->SetRegions(currentImage->GetLargestPossibleRegion());
   nnField->Allocate();
 
+  // Initialize the entire NNfield to be empty matches
+  MatchSet emptyMatchSet;
+  emptyMatchSet.SetMaximumMatches(10);
+  ITKHelpers::SetImageToConstant(nnField.GetPointer(), emptyMatchSet);
+
   // Initialize the NNField in the known region
   InitializerKnownRegion initializerKnownRegion;
   initializerKnownRegion.SetSourceMask(this->SourceMask);
@@ -129,6 +134,7 @@ void BDSInpaintingRings<TImage>::Inpaint()
   neighborHistogramAcceptanceTest.SetRangeMax(1.0f);
   neighborHistogramAcceptanceTest.SetPatchRadius(this->PatchRadius);
   neighborHistogramAcceptanceTest.SetNeighborHistogramMultiplier(2.0f);
+  neighborHistogramAcceptanceTest.SetNumberOfBinsPerDimension(30);
 
   typedef AcceptanceTestComposite AcceptanceTestType;
   AcceptanceTestComposite acceptanceTest;
@@ -136,18 +142,17 @@ void BDSInpaintingRings<TImage>::Inpaint()
   acceptanceTest.AddAcceptanceTest(&acceptanceTestSSD);
   acceptanceTest.AddAcceptanceTest(&neighborHistogramAcceptanceTest);
 
-  typedef ProcessValidMaskPixels ProcessFunctorType;
-  ProcessFunctorType processFunctor(outsideTargetMask);
+  Process* processFunctor = new ProcessValidMaskPixels(outsideTargetMask);
 
   // This is templated on the parent class "Process" so the process functor can be
   // changed to one of a different type later
-  typedef PropagatorForwardBackward<PatchDistanceFunctorType, Process,
+  typedef PropagatorForwardBackward<PatchDistanceFunctorType,
           AcceptanceTestType> PropagatorType;
   PropagatorType propagationFunctor;
   propagationFunctor.SetPatchRadius(this->PatchRadius);
   propagationFunctor.SetAcceptanceTest(&acceptanceTest);
   propagationFunctor.SetPatchDistanceFunctor(&patchDistanceFunctor);
-  propagationFunctor.SetProcessFunctor(&processFunctor);
+  propagationFunctor.SetProcessFunctor(processFunctor);
 
   typedef RandomSearch<TImage, PatchDistanceFunctorType, AcceptanceTestType>
     RandomSearchType;
@@ -156,7 +161,7 @@ void BDSInpaintingRings<TImage>::Inpaint()
   randomSearcher.SetPatchRadius(this->PatchRadius);
   randomSearcher.SetSourceMask(this->SourceMask);
   randomSearcher.SetPatchDistanceFunctor(&patchDistanceFunctor);
-  randomSearcher.SetProcessFunctor(&processFunctor);
+  randomSearcher.SetProcessFunctor(processFunctor);
   randomSearcher.SetAcceptanceTest(&acceptanceTest);
 
   PatchMatchHelpers::WriteNNField(nnField.GetPointer(), "BDSInpaintingRings_KnownRegionNNField.mha");
@@ -174,7 +179,7 @@ void BDSInpaintingRings<TImage>::Inpaint()
   // Setup the PatchMatch functor
   PatchMatch patchMatchFunctor;
   patchMatchFunctor.SetIterations(5);
-  patchMatchFunctor.Compute(nnField, &propagationFunctor, &randomSearcher, &processFunctor);
+  patchMatchFunctor.Compute(nnField, &propagationFunctor, &randomSearcher, processFunctor);
 
   PatchMatchHelpers::WriteNNField(nnField.GetPointer(), "BDSInpaintingRings_FirstPatchMatch.mha");
 
@@ -199,13 +204,53 @@ void BDSInpaintingRings<TImage>::Inpaint()
     neighborHistogramAcceptanceTest.SetNeighborHistogramMultiplier(histogramMultiplier);
 
     patchMatchFunctor.Compute(nnField, &propagationFunctor, &randomSearcher,
-                              &processFunctor);
+                              processFunctor);
 
     PatchMatchHelpers::WriteNNField(nnField.GetPointer(),
                                     Helpers::GetSequentialFileName("BDSInpaintingRings_PropagatedNNField",
                                                                    iteration, "mha"));
     histogramMultiplier += histogramMultiplierStep;
     std::cout << "Increased histogramMultiplier to " << histogramMultiplier << std::endl;
+
+//     if(histogramMultiplier > 5)
+//     {
+//       typedef itk::Image<int, 2> ChannelImageType;
+//       ChannelImageType::Pointer xCoords = ChannelImageType::New();
+//       ITKHelpers::ExtractChannel(nnField.GetPointer(), 0, xCoords.GetPointer());
+// 
+//       ChannelImageType::Pointer medianFilteredXCoords = ChannelImageType::New();
+//       ITKHelpers::MedianFilter(xCoords.GetPointer(), medianFilteredXCoords.GetPointer());
+// 
+//       histogramMultiplier = histogramMultiplierInitial;
+//     }
+
+    if(histogramMultiplier > 5)
+    {
+      // Clear all matches for patches that still do not have a good (verified) match
+      // This means it remains from the random initialization.
+      auto testFunctor = [nnField](const itk::Index<2>& index)
+                                  {
+                                    // Don't process pixels that have a verified match
+                                    if(nnField->GetPixel(index).HasVerifiedMatch())
+                                    {
+                                      return false;
+                                    }
+                                    return true;
+                                  };
+      auto operationFunctor = [nnField](const itk::Index<2>& index)
+                                  {
+                                    MatchSet matchSet = nnField->GetPixel(index);
+                                    matchSet.Clear();
+                                    nnField->SetPixel(index, matchSet);
+                                  };
+
+      ITKHelpers::ApplyOperationToTestedPixels(nnField.GetPointer(),
+                                               testFunctor, operationFunctor);
+      processFunctor = new ProcessUnverifiedValidMaskPixels(nnField, outsideTargetMask);
+
+      histogramMultiplier = histogramMultiplierInitial;
+    }
+
     iteration++;
   }
 

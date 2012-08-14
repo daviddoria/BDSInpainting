@@ -98,15 +98,14 @@ void BDSInpainting<TImage>::Inpaint(TPatchMatchFunctor* const patchMatchFunctor,
   acceptanceTest.SetPatchRadius(this->PatchRadius);
   acceptanceTest.SetNeighborHistogramMultiplier(2.0f);
 
-  typedef ProcessValidMaskPixels ProcessFunctorType;
-  ProcessFunctorType processFunctor(this->TargetMask);
+  Process* processFunctor = new ProcessValidMaskPixels(this->TargetMask);
 
-  typedef PropagatorForwardBackward<PatchDistanceFunctorType, ProcessFunctorType,
+  typedef PropagatorForwardBackward<PatchDistanceFunctorType,
           AcceptanceTestType> PropagatorType;
   PropagatorType propagationFunctor;
   propagationFunctor.SetAcceptanceTest(&acceptanceTest);
   propagationFunctor.SetPatchDistanceFunctor(&patchDistanceFunctor);
-  propagationFunctor.SetProcessFunctor(&processFunctor);
+  propagationFunctor.SetProcessFunctor(processFunctor);
   propagationFunctor.SetPatchRadius(this->PatchRadius);
 
   typedef RandomSearch<TImage, PatchDistanceFunctorType, AcceptanceTestType>
@@ -114,7 +113,7 @@ void BDSInpainting<TImage>::Inpaint(TPatchMatchFunctor* const patchMatchFunctor,
   RandomSearchType randomSearcher;
   randomSearcher.SetImage(this->Image);
   randomSearcher.SetPatchDistanceFunctor(&patchDistanceFunctor);
-  randomSearcher.SetProcessFunctor(&processFunctor);
+  randomSearcher.SetProcessFunctor(processFunctor);
   randomSearcher.SetAcceptanceTest(&acceptanceTest);
   //////////////////// The things above this block should probably be passed into this class
 
@@ -136,7 +135,7 @@ void BDSInpainting<TImage>::Inpaint(TPatchMatchFunctor* const patchMatchFunctor,
     PatchMatchHelpers::WriteNNField(nnField.GetPointer(),
                                         "InitializedRandomNNField.mha"); // debug only
     // Give the PatchMatch functor the data
-    patchMatchFunctor->Compute(nnField, &propagationFunctor, &randomSearcher, &processFunctor);
+    patchMatchFunctor->Compute(nnField, &propagationFunctor, &randomSearcher, processFunctor);
 
     PatchMatchHelpers::WriteNNField(nnField.GetPointer(), "PatchMatchNNField.mha");
 
