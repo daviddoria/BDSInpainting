@@ -179,12 +179,12 @@ void BDSInpaintingRings<TImage>::Inpaint()
 
   // Setup the PatchMatch functor
   PatchMatch patchMatchFunctor;
-  patchMatchFunctor.SetIterations(1);
+  patchMatchFunctor.SetIterations(3);
   //patchMatchFunctor.Compute(nnField, &propagationFunctor, &randomSearcher, processFunctor); // This will be done in the loop
 
   PatchMatchHelpers::WriteNNField(nnField.GetPointer(), "BDSInpaintingRings_FirstPatchMatch.mha");
 
-  float histogramMultiplierInitial = 5.0f;
+  float histogramMultiplierInitial = 3.0f;
   float histogramMultiplierStep = 0.2f;
   float histogramMultiplier = histogramMultiplierInitial;
 
@@ -276,7 +276,8 @@ void BDSInpaintingRings<TImage>::Inpaint()
 
     neighborHistogramAcceptanceTest.SetNeighborHistogramMultiplier(histogramMultiplier);
 
-    propagationFunctor.Propagate(nnField);
+    bool force = true;
+    propagationFunctor.Propagate(nnField, force);
 
     PatchMatchHelpers::WriteNNField(nnField.GetPointer(),
                                     Helpers::GetSequentialFileName("BDSRings_NNField_PropOnly",
