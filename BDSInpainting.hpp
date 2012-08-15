@@ -90,13 +90,13 @@ void BDSInpainting<TImage>::Inpaint(TPatchMatchFunctor* const patchMatchFunctor,
   ITKHelpers::ITKImageToHSVImage(currentImage.GetPointer(), hsvImage.GetPointer());
   ITKHelpers::WriteImage(hsvImage.GetPointer(), "HSV.mha");
 
-  typedef AcceptanceTestNeighborHistogram<HSVImageType> AcceptanceTestType;
+  typedef AcceptanceTestNeighborHistogramRatio<HSVImageType> AcceptanceTestType;
   AcceptanceTestType acceptanceTest;
   acceptanceTest.SetImage(hsvImage);
   acceptanceTest.SetRangeMin(0.0f);
   acceptanceTest.SetRangeMax(1.0f);
   acceptanceTest.SetPatchRadius(this->PatchRadius);
-  acceptanceTest.SetNeighborHistogramMultiplier(2.0f);
+  acceptanceTest.SetMaxNeighborHistogramRatio(2.0f);
 
   Process* processFunctor = new ProcessValidMaskPixels(this->TargetMask);
 
