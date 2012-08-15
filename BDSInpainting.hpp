@@ -101,7 +101,7 @@ void BDSInpainting<TImage>::Inpaint(TPatchMatchFunctor* const patchMatchFunctor,
   Process* processFunctor = new ProcessValidMaskPixels(this->TargetMask);
 
   typedef PropagatorForwardBackward<PatchDistanceFunctorType,
-          AcceptanceTestType> PropagatorType;
+          AcceptanceTestType, ForwardPropagationNeighbors, BackwardPropagationNeighbors> PropagatorType;
   PropagatorType propagationFunctor;
   propagationFunctor.SetAcceptanceTest(&acceptanceTest);
   propagationFunctor.SetPatchDistanceFunctor(&patchDistanceFunctor);

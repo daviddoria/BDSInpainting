@@ -148,12 +148,16 @@ void BDSInpaintingRings<TImage>::Inpaint()
   // This is templated on the parent class "Process" so the process functor can be
   // changed to one of a different type later
   typedef PropagatorForwardBackward<PatchDistanceFunctorType,
-          AcceptanceTestType> PropagatorType;
+          AcceptanceTestType, ForwardPropagationNeighbors, BackwardPropagationNeighbors> PropagatorType;
   PropagatorType propagationFunctor;
   propagationFunctor.SetPatchRadius(this->PatchRadius);
   propagationFunctor.SetAcceptanceTest(&acceptanceTest);
   propagationFunctor.SetPatchDistanceFunctor(&patchDistanceFunctor);
   propagationFunctor.SetProcessFunctor(processFunctor);
+  ForwardPropagationNeighbors forwardNeighbors;
+  propagationFunctor.SetForwardNeighborFunctor(&forwardNeighbors);
+  BackwardPropagationNeighbors backwardNeighbors;
+  propagationFunctor.SetBackwardNeighborFunctor(&backwardNeighbors);
 
   typedef RandomSearch<TImage, PatchDistanceFunctorType, AcceptanceTestType>
     RandomSearchType;
@@ -242,15 +246,9 @@ void BDSInpaintingRings<TImage>::Inpaint()
   ITKHelpers::ApplyOperationToTestedPixels(nnField.GetPointer(),
                                             testFunctor, clearFunctor);
 
-  processFunctor = new ProcessUnverifiedValidMaskPixels(nnField, outsideTargetMask);
-
-  propagationFunctor.SetProcessFunctor(processFunctor);
-
   PatchMatchHelpers::WriteVerifiedPixels(nnField.GetPointer(), "VerifiedPixels.mha");
 
   histogramMultiplier = histogramMultiplierInitial;
-
-  propagationFunctor.GetAcceptanceTest()->RemoveAcceptanceTest(&acceptanceTestSSD);
 
   auto outputWhichFailed = [](const unsigned int whichFailed)
                  {
@@ -266,6 +264,23 @@ void BDSInpaintingRings<TImage>::Inpaint()
 
   // Loop through histogramMultipliers again, this time only performing propagation (no random search)
   std::cout << "Starting propagation only phase." << std::endl;
+
+  ProcessUnverifiedValidMaskPixels unverifiedProcessFunctor(nnField, outsideTargetMask);
+
+  AcceptanceTestAcceptAll acceptAllTest;
+  typedef PropagatorForwardBackward<PatchDistanceFunctorType,
+          AcceptanceTestAcceptAll, VerifiedForwardPropagationNeighbors,
+          VerifiedBackwardPropagationNeighbors> ForcePropagatorType;
+  ForcePropagatorType forcePropagator;
+  forcePropagator.SetPatchRadius(this->PatchRadius);
+  forcePropagator.SetAcceptanceTest(&acceptAllTest);
+  forcePropagator.SetPatchDistanceFunctor(&patchDistanceFunctor);
+  forcePropagator.SetProcessFunctor(&unverifiedProcessFunctor);
+  VerifiedForwardPropagationNeighbors verifiedForwardNeighbors(nnField);
+  forcePropagator.SetForwardNeighborFunctor(&verifiedForwardNeighbors);
+  VerifiedBackwardPropagationNeighbors verifiedBackwardNeighbors(nnField);
+  forcePropagator.SetBackwardNeighborFunctor(&verifiedBackwardNeighbors);
+
   while(PatchMatchHelpers::CountTestedPixels(nnField.GetPointer(),
           outsideTargetMask, testHasVerifiedMatch) > 0)
   {
