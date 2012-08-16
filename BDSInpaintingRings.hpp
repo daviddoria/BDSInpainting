@@ -150,16 +150,27 @@ void BDSInpaintingRings<TImage>::Inpaint()
   Process* processFunctor = new ProcessValidMaskPixels(outsideTargetMask);
 
   typedef PropagatorForwardBackward<PatchDistanceFunctorType,
-          AcceptanceTestType, ValidMaskForwardPropagationNeighbors,
-          ValidMaskBackwardPropagationNeighbors> PropagatorType;
+          AcceptanceTestType> PropagatorType;
   PropagatorType propagationFunctor;
   propagationFunctor.SetPatchRadius(this->PatchRadius);
   propagationFunctor.SetAcceptanceTest(&acceptanceTest);
   propagationFunctor.SetPatchDistanceFunctor(&patchDistanceFunctor);
   propagationFunctor.SetProcessFunctor(processFunctor);
-  ValidMaskForwardPropagationNeighbors forwardNeighbors(outsideTargetMask);
+
+  NeighborTestValidMask validMaskNeighborTest(outsideTargetMask);
+
+  Neighbors forwardNeighbors;
+  forwardNeighbors.SetRegion(nnField->GetLargestPossibleRegion());
+  NeighborTestForward forwardNeighborTest;
+  forwardNeighbors.AddNeighborTest(&forwardNeighborTest);
+  forwardNeighbors.AddNeighborTest(&validMaskNeighborTest);
   propagationFunctor.SetForwardNeighborFunctor(&forwardNeighbors);
-  ValidMaskBackwardPropagationNeighbors backwardNeighbors(outsideTargetMask);
+
+  Neighbors backwardNeighbors;
+  backwardNeighbors.SetRegion(nnField->GetLargestPossibleRegion());
+  NeighborTestBackward backwardNeighborTest;
+  backwardNeighbors.AddNeighborTest(&backwardNeighborTest);
+  backwardNeighbors.AddNeighborTest(&validMaskNeighborTest);
   propagationFunctor.SetBackwardNeighborFunctor(&backwardNeighbors);
 
   typedef RandomSearch<TImage, PatchDistanceFunctorType, AcceptanceTestType>
@@ -275,16 +286,27 @@ void BDSInpaintingRings<TImage>::Inpaint()
   // The only acceptance test we want to apply is to make sure the propagated
   // patch is actually valid (completely in the source region)
   typedef PropagatorForwardBackward<PatchDistanceFunctorType,
-          AcceptanceTestSourceRegionType, ValidMaskForwardPropagationNeighbors,
-          ValidMaskBackwardPropagationNeighbors> ForcePropagatorType;
+          AcceptanceTestSourceRegionType> ForcePropagatorType;
   ForcePropagatorType forcePropagator;
   forcePropagator.SetPatchRadius(this->PatchRadius);
   forcePropagator.SetAcceptanceTest(&acceptanceTestSourceRegion);
   forcePropagator.SetPatchDistanceFunctor(&patchDistanceFunctor);
   forcePropagator.SetProcessFunctor(&unverifiedProcessFunctor);
-  VerifiedForwardPropagationNeighbors verifiedForwardNeighbors(nnField);
+
+  NeighborTestVerified verifiedNeighborTest(nnField);
+
+  Neighbors verifiedForwardNeighbors;
+  verifiedForwardNeighbors.SetRegion(nnField->GetLargestPossibleRegion());
+  verifiedForwardNeighbors.AddNeighborTest(&verifiedNeighborTest);
+  NeighborTestForward forceForwardNeighborTest; // This is only named 'force*' because 'forwardNeighborTest was already declared for use in the previous (non-forced) propagator
+  verifiedForwardNeighbors.AddNeighborTest(&forceForwardNeighborTest);
   forcePropagator.SetForwardNeighborFunctor(&verifiedForwardNeighbors);
-  VerifiedBackwardPropagationNeighbors verifiedBackwardNeighbors(nnField);
+
+  Neighbors verifiedBackwardNeighbors;
+  verifiedBackwardNeighbors.SetRegion(nnField->GetLargestPossibleRegion());
+  verifiedBackwardNeighbors.AddNeighborTest(&verifiedNeighborTest);
+  NeighborTestBackward forceBackwardNeighborTest; // This is only named 'force*' because 'backwardNeighborTest was already declared for use in the previous (non-forced) propagator
+  verifiedBackwardNeighbors.AddNeighborTest(&forceBackwardNeighborTest);
   forcePropagator.SetBackwardNeighborFunctor(&verifiedBackwardNeighbors);
 
   int propCounter = 0;
@@ -295,7 +317,7 @@ void BDSInpaintingRings<TImage>::Inpaint()
                                                                 propCounter, "mha"));
                     propCounter++;
                  };
-  forcePropagator.PropagatedSignal.connect(writePropagatedSlot);
+  //forcePropagator.PropagatedSignal.connect(writePropagatedSlot);
 
   iteration = 0;
   while(PatchMatchHelpers::CountTestedPixels(nnField.GetPointer(),
