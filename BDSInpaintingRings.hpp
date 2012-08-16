@@ -28,6 +28,7 @@
 #include "InitializerNeighborHistogram.h"
 #include "AcceptanceTestNeighborHistogram.h"
 #include "Verifier.h"
+#include "Slots.h"
 #include "PixelCompositors.h"
 
 // Submodules
@@ -131,6 +132,7 @@ void BDSInpaintingRings<TImage>::Inpaint()
 
   typedef AcceptanceTestSourceRegion AcceptanceTestSourceRegionType;
   AcceptanceTestSourceRegion acceptanceTestSourceRegion(this->SourceMask);
+  acceptanceTestSourceRegion.SetIncludeInScore(false);
 
   typedef AcceptanceTestNeighborHistogramRatio<HSVImageType> NeighborHistogramRatioAcceptanceTestType;
   NeighborHistogramRatioAcceptanceTestType neighborHistogramRatioAcceptanceTest;
@@ -140,6 +142,7 @@ void BDSInpaintingRings<TImage>::Inpaint()
   neighborHistogramRatioAcceptanceTest.SetPatchRadius(this->PatchRadius);
   //neighborHistogramRatioAcceptanceTest.SetNeighborHistogramMultiplier(2.0f); // this will be set in the loop
   neighborHistogramRatioAcceptanceTest.SetNumberOfBinsPerDimension(30);
+  neighborHistogramRatioAcceptanceTest.SetIncludeInScore(true);
 
   typedef AcceptanceTestComposite AcceptanceTestType;
   AcceptanceTestComposite acceptanceTest;
@@ -157,6 +160,12 @@ void BDSInpaintingRings<TImage>::Inpaint()
   propagationFunctor.SetPatchDistanceFunctor(&patchDistanceFunctor);
   propagationFunctor.SetProcessFunctor(processFunctor);
 
+  WritePatchPair<TImage> propagatedPatchPairWriter(this->Image, this->PatchRadius, "PropagatedPairs");
+
+  auto propagatedPairWriter = [&propagatedPatchPairWriter](const itk::Index<2>& queryCenter, const itk::Index<2>& matchCenter, const float score)
+                    {propagatedPatchPairWriter.Write(queryCenter, matchCenter, score);};
+  propagationFunctor.AcceptedSignal.connect(propagatedPairWriter);
+  
   NeighborTestValidMask validMaskNeighborTest(outsideTargetMask);
 
   Neighbors forwardNeighbors;
@@ -182,6 +191,13 @@ void BDSInpaintingRings<TImage>::Inpaint()
   randomSearcher.SetPatchDistanceFunctor(&patchDistanceFunctor);
   randomSearcher.SetProcessFunctor(processFunctor);
   randomSearcher.SetAcceptanceTest(&acceptanceTest);
+  randomSearcher.SetRandom(false);
+
+  WritePatchPair<TImage> patchPairWriter(this->Image, this->PatchRadius, "RandomSearchPairs");
+
+  auto pairWriter = [&patchPairWriter](const itk::Index<2>& queryCenter, const itk::Index<2>& matchCenter, const float score)
+                    {patchPairWriter.Write(queryCenter, matchCenter, score);};
+  randomSearcher.AcceptedSignal.connect(pairWriter);
 
   // Initialize the NNField in the PatchRadius thick ring outside of the target region
   InitializerRandom<PatchDistanceFunctorType> initializer;
@@ -210,10 +226,15 @@ void BDSInpaintingRings<TImage>::Inpaint()
   float histogramMultiplier = histogramMultiplierInitial;
 
   unsigned int iteration = 0;
+
   auto testNoVerifiedMatch = [](const MatchSet& queryMatchSet)
   {
     return !queryMatchSet.HasVerifiedMatch();
   };
+
+  WriteSlot patchMatchWriter("BDS_Phase1");
+  auto pmWriter = [&patchMatchWriter](PatchMatchHelpers::NNFieldType* nnField){patchMatchWriter.Write(nnField);};
+  patchMatchFunctor.UpdatedSignal.connect(pmWriter);
 
   while(PatchMatchHelpers::CountTestedPixels(nnField.GetPointer(),
           outsideTargetMask, testNoVerifiedMatch) > 0)
@@ -242,6 +263,7 @@ void BDSInpaintingRings<TImage>::Inpaint()
     iteration++;
   }
 
+  exit(-1);
   // Clear all matches for patches that still do not have a good (verified) match
   // This means it remains from the random initialization.
   auto noVerifiedMatchFunctor = [nnField](const itk::Index<2>& index)
@@ -309,15 +331,7 @@ void BDSInpaintingRings<TImage>::Inpaint()
   verifiedBackwardNeighbors.AddNeighborTest(&forceBackwardNeighborTest);
   forcePropagator.SetBackwardNeighborFunctor(&verifiedBackwardNeighbors);
 
-  int propCounter = 0;
-  auto writePropagatedSlot = [&propCounter](PatchMatchHelpers::NNFieldType* nnField)
-                 {
-                    PatchMatchHelpers::WriteNNField(nnField,
-                                Helpers::GetSequentialFileName("PropOnly",
-                                                                propCounter, "mha"));
-                    propCounter++;
-                 };
-  //forcePropagator.PropagatedSignal.connect(writePropagatedSlot);
+  
 
   iteration = 0;
   while(PatchMatchHelpers::CountTestedPixels(nnField.GetPointer(),
@@ -332,7 +346,7 @@ void BDSInpaintingRings<TImage>::Inpaint()
     forcePropagator.Propagate(nnField, force);
 
     PatchMatchHelpers::WriteNNField(nnField.GetPointer(),
-                                    Helpers::GetSequentialFileName("BDSRings_NNField_PropOnly",
+                                    Helpers::GetSequentialFileName("BDSRings_NNField_ForceProp",
                                                                    iteration, "mha"));
 
     // Mark the pixels that were propagated to in the last iteration so that they can be used in the next iteration.
