@@ -150,15 +150,16 @@ void BDSInpaintingRings<TImage>::Inpaint()
   Process* processFunctor = new ProcessValidMaskPixels(outsideTargetMask);
 
   typedef PropagatorForwardBackward<PatchDistanceFunctorType,
-          AcceptanceTestType, ForwardPropagationNeighbors, BackwardPropagationNeighbors> PropagatorType;
+          AcceptanceTestType, ValidMaskForwardPropagationNeighbors,
+          ValidMaskBackwardPropagationNeighbors> PropagatorType;
   PropagatorType propagationFunctor;
   propagationFunctor.SetPatchRadius(this->PatchRadius);
   propagationFunctor.SetAcceptanceTest(&acceptanceTest);
   propagationFunctor.SetPatchDistanceFunctor(&patchDistanceFunctor);
   propagationFunctor.SetProcessFunctor(processFunctor);
-  ForwardPropagationNeighbors forwardNeighbors;
+  ValidMaskForwardPropagationNeighbors forwardNeighbors(outsideTargetMask);
   propagationFunctor.SetForwardNeighborFunctor(&forwardNeighbors);
-  BackwardPropagationNeighbors backwardNeighbors;
+  ValidMaskBackwardPropagationNeighbors backwardNeighbors(outsideTargetMask);
   propagationFunctor.SetBackwardNeighborFunctor(&backwardNeighbors);
 
   typedef RandomSearch<TImage, PatchDistanceFunctorType, AcceptanceTestType>
@@ -250,14 +251,14 @@ void BDSInpaintingRings<TImage>::Inpaint()
 
 //   ITKHelpers::ApplyOperationToTestedPixels(nnField.GetPointer(),
 //                                            noVerifiedMatchFunctor, clearFunctor);
-// 
+
 //   PatchMatchHelpers::WriteVerifiedPixels(nnField.GetPointer(), "VerifiedPixels.mha");
 
   histogramMultiplier = histogramMultiplierInitial;
 
-  auto outputWhichFailed = [](const unsigned int whichFailed)
+  auto outputWhichFailed = [](const std::string& whichFailed)
                  {
-                   std::cout << "Acceptance test " << whichFailed << " failed." << std::endl;
+                   std::cout << whichFailed << std::endl;
                 };
   //acceptanceTest.WhichFailedSignal.connect(outputWhichFailed);
 
@@ -267,22 +268,24 @@ void BDSInpaintingRings<TImage>::Inpaint()
                 };
   //acceptanceTest.FailedScoreSignal.connect(outputFailedScore);
 
-  // Loop through histogramMultipliers again, this time only performing propagation (no random search)
   std::cout << "Starting propagation only phase." << std::endl;
 
   ProcessUnverifiedValidMaskPixels unverifiedProcessFunctor(nnField, outsideTargetMask);
 
   // The only acceptance test we want to apply is to make sure the propagated
   // patch is actually valid (completely in the source region)
-  typedef Propagator<PatchDistanceFunctorType, ValidMaskVerifiedNeighbors,
-          AcceptanceTestSourceRegionType> ForcePropagatorType;
+  typedef PropagatorForwardBackward<PatchDistanceFunctorType,
+          AcceptanceTestSourceRegionType, ValidMaskForwardPropagationNeighbors,
+          ValidMaskBackwardPropagationNeighbors> ForcePropagatorType;
   ForcePropagatorType forcePropagator;
   forcePropagator.SetPatchRadius(this->PatchRadius);
   forcePropagator.SetAcceptanceTest(&acceptanceTestSourceRegion);
   forcePropagator.SetPatchDistanceFunctor(&patchDistanceFunctor);
   forcePropagator.SetProcessFunctor(&unverifiedProcessFunctor);
-  ValidMaskVerifiedNeighbors validMaskVerifiedNeighbors(nnField, outsideTargetMask);
-  forcePropagator.SetNeighborFunctor(&validMaskVerifiedNeighbors);
+  VerifiedForwardPropagationNeighbors verifiedForwardNeighbors(nnField);
+  forcePropagator.SetForwardNeighborFunctor(&verifiedForwardNeighbors);
+  VerifiedBackwardPropagationNeighbors verifiedBackwardNeighbors(nnField);
+  forcePropagator.SetBackwardNeighborFunctor(&verifiedBackwardNeighbors);
 
   int propCounter = 0;
   auto writePropagatedSlot = [&propCounter](PatchMatchHelpers::NNFieldType* nnField)
@@ -309,7 +312,21 @@ void BDSInpaintingRings<TImage>::Inpaint()
     PatchMatchHelpers::WriteNNField(nnField.GetPointer(),
                                     Helpers::GetSequentialFileName("BDSRings_NNField_PropOnly",
                                                                    iteration, "mha"));
-    break; // TODO: Remove this
+
+    // Mark the pixels that were propagated to in the last iteration so that they can be used in the next iteration.
+    // Without this, we would only be able to forcefully propagate to 1 pixel away from verified pixels.
+    itk::ImageRegionIteratorWithIndex<PatchMatchHelpers::NNFieldType> fieldIterator(nnField, nnField->GetLargestPossibleRegion());
+    while(!fieldIterator.IsAtEnd())
+    {
+      MatchSet matchSet = fieldIterator.Get();
+      if(matchSet.GetNumberOfMatches() > 0 && !matchSet.GetMatch(0).GetAllowPropagation())
+      {
+        matchSet.GetMatch(0).SetAllowPropagation(true);
+      }
+      ++fieldIterator;
+    }
+
+    //break; // TODO: Remove this
     iteration++;
   }
   PatchMatchHelpers::WriteNNField(nnField.GetPointer(),
