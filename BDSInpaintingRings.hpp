@@ -165,7 +165,7 @@ void BDSInpaintingRings<TImage>::Inpaint()
   auto propagatedPairWriter = [&propagatedPatchPairWriter](const itk::Index<2>& queryCenter, const itk::Index<2>& matchCenter, const float score)
                     {propagatedPatchPairWriter.Write(queryCenter, matchCenter, score);};
   propagationFunctor.AcceptedSignal.connect(propagatedPairWriter);
-  
+
   NeighborTestValidMask validMaskNeighborTest(outsideTargetMask);
 
   Neighbors forwardNeighbors;
@@ -263,7 +263,6 @@ void BDSInpaintingRings<TImage>::Inpaint()
     iteration++;
   }
 
-  exit(-1);
   // Clear all matches for patches that still do not have a good (verified) match
   // This means it remains from the random initialization.
   auto noVerifiedMatchFunctor = [nnField](const itk::Index<2>& index)
@@ -315,11 +314,23 @@ void BDSInpaintingRings<TImage>::Inpaint()
   forcePropagator.SetPatchDistanceFunctor(&patchDistanceFunctor);
   forcePropagator.SetProcessFunctor(&unverifiedProcessFunctor);
 
+  WritePatchPair<TImage> forcedPropagatedPatchPairWriter(this->Image, this->PatchRadius, "ForcedPropagatedPairs");
+
+  auto forcedPropagatedPairWriter = [&forcedPropagatedPatchPairWriter](const itk::Index<2>& queryCenter, const itk::Index<2>& matchCenter, const float score)
+                    {forcedPropagatedPatchPairWriter.Write(queryCenter, matchCenter, score);};
+  forcePropagator.AcceptedSignal.connect(forcedPropagatedPairWriter);
+
+  OutputPixelSlot outputPixelFunctor;
+  auto outputPixelSlot = [&outputPixelFunctor](const itk::Index<2>& index)
+                    {outputPixelFunctor.OutputPixel(index);};
+  forcePropagator.ProcessPixelSignal.connect(outputPixelSlot);
+
   NeighborTestVerified verifiedNeighborTest(nnField);
 
   Neighbors verifiedForwardNeighbors;
   verifiedForwardNeighbors.SetRegion(nnField->GetLargestPossibleRegion());
   verifiedForwardNeighbors.AddNeighborTest(&verifiedNeighborTest);
+  verifiedForwardNeighbors.AddNeighborTest(&validMaskNeighborTest);
   NeighborTestForward forceForwardNeighborTest; // This is only named 'force*' because 'forwardNeighborTest was already declared for use in the previous (non-forced) propagator
   verifiedForwardNeighbors.AddNeighborTest(&forceForwardNeighborTest);
   forcePropagator.SetForwardNeighborFunctor(&verifiedForwardNeighbors);
@@ -327,11 +338,10 @@ void BDSInpaintingRings<TImage>::Inpaint()
   Neighbors verifiedBackwardNeighbors;
   verifiedBackwardNeighbors.SetRegion(nnField->GetLargestPossibleRegion());
   verifiedBackwardNeighbors.AddNeighborTest(&verifiedNeighborTest);
+  verifiedBackwardNeighbors.AddNeighborTest(&validMaskNeighborTest);
   NeighborTestBackward forceBackwardNeighborTest; // This is only named 'force*' because 'backwardNeighborTest was already declared for use in the previous (non-forced) propagator
   verifiedBackwardNeighbors.AddNeighborTest(&forceBackwardNeighborTest);
   forcePropagator.SetBackwardNeighborFunctor(&verifiedBackwardNeighbors);
-
-  
 
   iteration = 0;
   while(PatchMatchHelpers::CountTestedPixels(nnField.GetPointer(),
