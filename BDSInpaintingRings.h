@@ -78,6 +78,7 @@ private:
 
   /** Compute the NNField using a combination of verified propagation, random search, and forced propagation steps. */
   void ComputeNNField(Mask* const targetMask);
+
 };
 
 #include "BDSInpaintingRings.hpp"
