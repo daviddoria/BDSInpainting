@@ -50,355 +50,354 @@ BDSInpaintingRings<TImage>::BDSInpaintingRings() : InpaintingAlgorithm<TImage>()
 template <typename TImage>
 void BDSInpaintingRings<TImage>::Inpaint()
 {
-    { // Debug only
-    ITKHelpers::WriteImage(this->TargetMask.GetPointer(), "BDSInpaintingRings_TargetMask.png");
-    ITKHelpers::WriteImage(this->SourceMask.GetPointer(), "BDSInpaintingRings_SourceMask.png");
-    }
+  { // Debug only
+  ITKHelpers::WriteImage(this->TargetMask.GetPointer(), "BDSInpaintingRings_TargetMask.png");
+  ITKHelpers::WriteImage(this->SourceMask.GetPointer(), "BDSInpaintingRings_SourceMask.png");
+  }
 
-    // Allocate the initial NNField
-    this->NNField = PatchMatchHelpers::NNFieldType::New();
-    this->NNField->SetRegions(this->Image->GetLargestPossibleRegion());
-    this->NNField->Allocate();
+  // Allocate the initial NNField
+  this->NNField = PatchMatchHelpers::NNFieldType::New();
+  this->NNField->SetRegions(this->Image->GetLargestPossibleRegion());
+  this->NNField->Allocate();
 
-    // Initialize the entire NNfield to be empty matches
-    MatchSet emptyMatchSet;
-    emptyMatchSet.SetMaximumMatches(10);
-    ITKHelpers::SetImageToConstant(this->NNField.GetPointer(), emptyMatchSet);
+  // Initialize the entire NNfield to be empty matches
+  MatchSet emptyMatchSet;
+  emptyMatchSet.SetMaximumMatches(10);
+  ITKHelpers::SetImageToConstant(this->NNField.GetPointer(), emptyMatchSet);
 
-    PatchMatchHelpers::WriteNNField(this->NNField.GetPointer(), "BDSInpaintingRings_OriginalInitialized.mha");
+  PatchMatchHelpers::WriteNNField(this->NNField.GetPointer(), "BDSInpaintingRings_OriginalInitialized.mha");
 
-    InitializeKnownRegion();
+  InitializeKnownRegion();
 
-    // Get the region where we need to compute the NNField but not composite
-    Mask::Pointer surroundingRingMask = Mask::New();
-    GetSurroundingRingMask(surroundingRingMask);
+  // Get the region where we need to compute the NNField but not composite
+  Mask::Pointer surroundingRingMask = Mask::New();
+  GetSurroundingRingMask(surroundingRingMask);
 
-    ProducePropagationBuffer();
+  // This is the only step that is separate from the ring-at-a-time filling.
+  ComputeNNField(surroundingRingMask);
 
-    ConstrainedPatchMatch(surroundingRingMask);
+  // Initialize the output from the original image
+  ITKHelpers::DeepCopy(this->Image.GetPointer(), this->Output.GetPointer());
 
-    ForcePropagation(surroundingRingMask);
-
-    // Initialize the output from the original image
-    ITKHelpers::DeepCopy(this->Image.GetPointer(), this->Output.GetPointer());
+  PatchRadiusThickRings();
 }
 
 template <typename TImage>
 void BDSInpaintingRings<TImage>::GetSurroundingRingMask(Mask* surroundingMask)
 {
-    // Expand the hole (ShrinkHole is called because here we mark the "hole"
-    // with "valid" pixels.
-    Mask::Pointer expandedTargetMask = Mask::New();
-    expandedTargetMask->DeepCopyFrom(this->TargetMask);
-    expandedTargetMask->ShrinkHole(this->PatchRadius);
+  // Expand the hole (ShrinkHole is called because here we mark the "hole"
+  // with "valid" pixels.
+  Mask::Pointer expandedTargetMask = Mask::New();
+  expandedTargetMask->DeepCopyFrom(this->TargetMask);
+  expandedTargetMask->ShrinkHole(this->PatchRadius);
 
-    ITKHelpers::WriteImage(expandedTargetMask.GetPointer(), "BDSInpaintingRings_ExpandedTargetMask.png");
+  ITKHelpers::WriteImage(expandedTargetMask.GetPointer(), "BDSInpaintingRings_ExpandedTargetMask.png");
 
-    // Get the difference (XOR) between the original hole and the expanded hole
-    ITKHelpers::XORImages(expandedTargetMask.GetPointer(), this->TargetMask.GetPointer(),
-                          surroundingMask, this->TargetMask->GetValidValue());
-    surroundingMask->CopyInformationFrom(this->TargetMask);
+  // Get the difference (XOR) between the original hole and the expanded hole
+  ITKHelpers::XORImages(expandedTargetMask.GetPointer(), this->TargetMask.GetPointer(),
+                        surroundingMask, this->TargetMask->GetValidValue());
+  surroundingMask->CopyInformationFrom(this->TargetMask);
 
-    ITKHelpers::WriteImage(surroundingMask, "BDSInpaintingRings_surroundingMask.png");
+  ITKHelpers::WriteImage(surroundingMask, "BDSInpaintingRings_surroundingMask.png");
 }
 
 template <typename TImage>
 void BDSInpaintingRings<TImage>::InitializeKnownRegion()
 {
-    // Initialize the NNField in the known region
-    InitializerKnownRegion initializerKnownRegion;
-    initializerKnownRegion.SetSourceMask(this->SourceMask);
-    initializerKnownRegion.SetPatchRadius(this->PatchRadius);
-    initializerKnownRegion.Initialize(this->NNField);
+  // Initialize the NNField in the known region
+  InitializerKnownRegion initializerKnownRegion;
+  initializerKnownRegion.SetSourceMask(this->SourceMask);
+  initializerKnownRegion.SetPatchRadius(this->PatchRadius);
+  initializerKnownRegion.Initialize(this->NNField);
 
-    PatchMatchHelpers::WriteNNField(this->NNField.GetPointer(), "BDSInpaintingRings_KnownRegionNNField.mha");
+  PatchMatchHelpers::WriteNNField(this->NNField.GetPointer(), "BDSInpaintingRings_KnownRegionNNField.mha");
 }
 
 template <typename TImage>
 void BDSInpaintingRings<TImage>::ProducePropagationBuffer()
 {
-    // Remove the boundary from the source mask, to give the propagation some breathing room.
-    // We just remove a 1 pixel thick boundary around the image, then perform an ExpandHole operation.
-    // ExpandHole() only operates on the boundary between Valid and Hole, so if we did not first remove the
-    // single pixel boundary nothing would happen to the boundary by the morphological filter.
-    // Must do this after the InitializerKnownRegion so that the pixels whose patches are fully in the original
-    // source region are initialized properly.
-    std::vector<itk::Index<2> > boundaryPixels =
-      ITKHelpers::GetBoundaryPixels(this->SourceMask->GetLargestPossibleRegion(), 1);
-    ITKHelpers::SetPixels(this->SourceMask.GetPointer(), boundaryPixels, this->SourceMask->GetHoleValue());
+  // Remove the boundary from the source mask, to give the propagation some breathing room.
+  // We just remove a 1 pixel thick boundary around the image, then perform an ExpandHole operation.
+  // ExpandHole() only operates on the boundary between Valid and Hole, so if we did not first remove the
+  // single pixel boundary nothing would happen to the boundary by the morphological filter.
+  // Must do this after the InitializerKnownRegion so that the pixels whose patches are fully in the original
+  // source region are initialized properly.
+  std::vector<itk::Index<2> > boundaryPixels =
+    ITKHelpers::GetBoundaryPixels(this->SourceMask->GetLargestPossibleRegion(), 1);
+  ITKHelpers::SetPixels(this->SourceMask.GetPointer(), boundaryPixels, this->SourceMask->GetHoleValue());
 
-    ITKHelpers::WriteImage(this->SourceMask.GetPointer(), "BDSInpaintingRings_BoundaryRemovedSourceMask.png");
+  ITKHelpers::WriteImage(this->SourceMask.GetPointer(), "BDSInpaintingRings_BoundaryRemovedSourceMask.png");
 
-    // Shrink the source region, around the border of the image and around the hole.
-    this->SourceMask->ExpandHole(this->PatchRadius);
-    ITKHelpers::WriteImage(this->SourceMask.GetPointer(), "BDSInpaintingRings_FinalSourceMask.png");
+  // Shrink the source region, around the border of the image and around the hole.
+  this->SourceMask->ExpandHole(this->PatchRadius);
+  ITKHelpers::WriteImage(this->SourceMask.GetPointer(), "BDSInpaintingRings_FinalSourceMask.png");
 }
 
 template <typename TImage>
 void BDSInpaintingRings<TImage>::ConstrainedPatchMatch(Mask* const targetMask)
 {
-    // Create the HSV image
-    typedef itk::VectorImage<float, 2> HSVImageType;
-    HSVImageType::Pointer hsvImage = HSVImageType::New();
-    ITKHelpers::ITKImageToHSVImage(this->Image.GetPointer(), hsvImage.GetPointer());
-    ITKHelpers::WriteImage(hsvImage.GetPointer(), "HSV.mha");
+  // Create the HSV image
+  typedef itk::VectorImage<float, 2> HSVImageType;
+  HSVImageType::Pointer hsvImage = HSVImageType::New();
+  ITKHelpers::ITKImageToHSVImage(this->Image.GetPointer(), hsvImage.GetPointer());
+  ITKHelpers::WriteImage(hsvImage.GetPointer(), "HSV.mha");
 
-    // Setup the patch distance functor
-    typedef SSD<TImage> PatchDistanceFunctorType;
-    PatchDistanceFunctorType patchDistanceFunctor;
-    patchDistanceFunctor.SetImage(this->Image);
+  // Setup the patch distance functor
+  typedef SSD<TImage> PatchDistanceFunctorType;
+  PatchDistanceFunctorType patchDistanceFunctor;
+  patchDistanceFunctor.SetImage(this->Image);
 
-    typedef AcceptanceTestSSD AcceptanceTestSSDType;
-    AcceptanceTestSSDType acceptanceTestSSD;
-    acceptanceTestSSD.SetIncludeInScore(false);
+  typedef AcceptanceTestSSD AcceptanceTestSSDType;
+  AcceptanceTestSSDType acceptanceTestSSD;
+  acceptanceTestSSD.SetIncludeInScore(false);
 
-    typedef AcceptanceTestSourceRegion AcceptanceTestSourceRegionType;
-    AcceptanceTestSourceRegion acceptanceTestSourceRegion(this->SourceMask);
-    acceptanceTestSourceRegion.SetIncludeInScore(false);
+  typedef AcceptanceTestSourceRegion AcceptanceTestSourceRegionType;
+  AcceptanceTestSourceRegion acceptanceTestSourceRegion(this->SourceMask);
+  acceptanceTestSourceRegion.SetIncludeInScore(false);
 
-    typedef AcceptanceTestNeighborHistogramRatio<HSVImageType> NeighborHistogramRatioAcceptanceTestType;
-    NeighborHistogramRatioAcceptanceTestType neighborHistogramRatioAcceptanceTest;
-    neighborHistogramRatioAcceptanceTest.SetImage(hsvImage);
-    neighborHistogramRatioAcceptanceTest.SetRangeMin(0.0f);
-    neighborHistogramRatioAcceptanceTest.SetRangeMax(1.0f);
-    neighborHistogramRatioAcceptanceTest.SetPatchRadius(this->PatchRadius);
-    //neighborHistogramRatioAcceptanceTest.SetNeighborHistogramMultiplier(2.0f); // this will be set in the loop
-    neighborHistogramRatioAcceptanceTest.SetNumberOfBinsPerDimension(30);
-    neighborHistogramRatioAcceptanceTest.SetIncludeInScore(true);
+  typedef AcceptanceTestNeighborHistogramRatio<HSVImageType> NeighborHistogramRatioAcceptanceTestType;
+  NeighborHistogramRatioAcceptanceTestType neighborHistogramRatioAcceptanceTest;
+  neighborHistogramRatioAcceptanceTest.SetImage(hsvImage);
+  neighborHistogramRatioAcceptanceTest.SetRangeMin(0.0f);
+  neighborHistogramRatioAcceptanceTest.SetRangeMax(1.0f);
+  neighborHistogramRatioAcceptanceTest.SetPatchRadius(this->PatchRadius);
+  //neighborHistogramRatioAcceptanceTest.SetNeighborHistogramMultiplier(2.0f); // this will be set in the loop
+  neighborHistogramRatioAcceptanceTest.SetNumberOfBinsPerDimension(30);
+  neighborHistogramRatioAcceptanceTest.SetIncludeInScore(true);
 
-    typedef AcceptanceTestComposite AcceptanceTestType;
-    AcceptanceTestComposite acceptanceTest;
-    acceptanceTest.AddAcceptanceTest(&acceptanceTestSourceRegion);
-    acceptanceTest.AddAcceptanceTest(&acceptanceTestSSD);
-    acceptanceTest.AddAcceptanceTest(&neighborHistogramRatioAcceptanceTest);
+  typedef AcceptanceTestComposite AcceptanceTestType;
+  AcceptanceTestComposite acceptanceTest;
+  acceptanceTest.AddAcceptanceTest(&acceptanceTestSourceRegion);
+  acceptanceTest.AddAcceptanceTest(&acceptanceTestSSD);
+  acceptanceTest.AddAcceptanceTest(&neighborHistogramRatioAcceptanceTest);
 
-    Process* processFunctor = new ProcessValidMaskPixels(targetMask);
+  Process* processFunctor = new ProcessValidMaskPixels(targetMask);
 
-    typedef PropagatorForwardBackward<PatchDistanceFunctorType,
-            AcceptanceTestType> PropagatorType;
-    PropagatorType propagationFunctor;
-    propagationFunctor.SetPatchRadius(this->PatchRadius);
-    propagationFunctor.SetAcceptanceTest(&acceptanceTest);
-    propagationFunctor.SetPatchDistanceFunctor(&patchDistanceFunctor);
-    propagationFunctor.SetProcessFunctor(processFunctor);
+  typedef PropagatorForwardBackward<PatchDistanceFunctorType,
+          AcceptanceTestType> PropagatorType;
+  PropagatorType propagationFunctor;
+  propagationFunctor.SetPatchRadius(this->PatchRadius);
+  propagationFunctor.SetAcceptanceTest(&acceptanceTest);
+  propagationFunctor.SetPatchDistanceFunctor(&patchDistanceFunctor);
+  propagationFunctor.SetProcessFunctor(processFunctor);
 
-    WritePatchPair<TImage> propagatedPatchPairWriter(this->Image, this->PatchRadius, "PropagatedPairs");
+  WritePatchPair<TImage> propagatedPatchPairWriter(this->Image, this->PatchRadius, "PropagatedPairs");
 
-    auto propagatedPairWriter = [&propagatedPatchPairWriter](const itk::Index<2>& queryCenter, const itk::Index<2>& matchCenter, const float score)
-                      {propagatedPatchPairWriter.Write(queryCenter, matchCenter, score);};
-    propagationFunctor.AcceptedSignal.connect(propagatedPairWriter);
+  auto propagatedPairWriter = [&propagatedPatchPairWriter](const itk::Index<2>& queryCenter, const itk::Index<2>& matchCenter, const float score)
+                    {propagatedPatchPairWriter.Write(queryCenter, matchCenter, score);};
+  propagationFunctor.AcceptedSignal.connect(propagatedPairWriter);
 
-    NeighborTestValidMask validMaskNeighborTest(targetMask);
+  NeighborTestValidMask validMaskNeighborTest(targetMask);
 
-    Neighbors forwardNeighbors;
-    forwardNeighbors.SetRegion(this->NNField->GetLargestPossibleRegion());
-    NeighborTestForward forwardNeighborTest;
-    forwardNeighbors.AddNeighborTest(&forwardNeighborTest);
-    forwardNeighbors.AddNeighborTest(&validMaskNeighborTest);
-    propagationFunctor.SetForwardNeighborFunctor(&forwardNeighbors);
+  Neighbors forwardNeighbors;
+  forwardNeighbors.SetRegion(this->NNField->GetLargestPossibleRegion());
+  NeighborTestForward forwardNeighborTest;
+  forwardNeighbors.AddNeighborTest(&forwardNeighborTest);
+  forwardNeighbors.AddNeighborTest(&validMaskNeighborTest);
+  propagationFunctor.SetForwardNeighborFunctor(&forwardNeighbors);
 
-    Neighbors backwardNeighbors;
-    backwardNeighbors.SetRegion(this->NNField->GetLargestPossibleRegion());
-    NeighborTestBackward backwardNeighborTest;
-    backwardNeighbors.AddNeighborTest(&backwardNeighborTest);
-    backwardNeighbors.AddNeighborTest(&validMaskNeighborTest);
-    propagationFunctor.SetBackwardNeighborFunctor(&backwardNeighbors);
+  Neighbors backwardNeighbors;
+  backwardNeighbors.SetRegion(this->NNField->GetLargestPossibleRegion());
+  NeighborTestBackward backwardNeighborTest;
+  backwardNeighbors.AddNeighborTest(&backwardNeighborTest);
+  backwardNeighbors.AddNeighborTest(&validMaskNeighborTest);
+  propagationFunctor.SetBackwardNeighborFunctor(&backwardNeighbors);
 
-    typedef RandomSearch<TImage, PatchDistanceFunctorType, AcceptanceTestType>
-      RandomSearchType;
-    RandomSearchType randomSearcher;
-    randomSearcher.SetImage(this->Image);
-    randomSearcher.SetPatchRadius(this->PatchRadius);
-    randomSearcher.SetSourceMask(this->SourceMask);
-    randomSearcher.SetPatchDistanceFunctor(&patchDistanceFunctor);
-    randomSearcher.SetProcessFunctor(processFunctor);
-    randomSearcher.SetAcceptanceTest(&acceptanceTest);
-    randomSearcher.SetRandom(false);
+  typedef RandomSearch<TImage, PatchDistanceFunctorType, AcceptanceTestType>
+    RandomSearchType;
+  RandomSearchType randomSearcher;
+  randomSearcher.SetImage(this->Image);
+  randomSearcher.SetPatchRadius(this->PatchRadius);
+  randomSearcher.SetSourceMask(this->SourceMask);
+  randomSearcher.SetPatchDistanceFunctor(&patchDistanceFunctor);
+  randomSearcher.SetProcessFunctor(processFunctor);
+  randomSearcher.SetAcceptanceTest(&acceptanceTest);
+  randomSearcher.SetRandom(false);
 
-    WritePatchPair<TImage> patchPairWriter(this->Image, this->PatchRadius, "RandomSearchPairs");
+  WritePatchPair<TImage> patchPairWriter(this->Image, this->PatchRadius, "RandomSearchPairs");
 
-    auto pairWriter = [&patchPairWriter](const itk::Index<2>& queryCenter, const itk::Index<2>& matchCenter, const float score)
-                      {patchPairWriter.Write(queryCenter, matchCenter, score);};
-    randomSearcher.AcceptedSignal.connect(pairWriter);
+  auto pairWriter = [&patchPairWriter](const itk::Index<2>& queryCenter, const itk::Index<2>& matchCenter, const float score)
+                    {patchPairWriter.Write(queryCenter, matchCenter, score);};
+  randomSearcher.AcceptedSignal.connect(pairWriter);
 
-    // Initialize the NNField in the PatchRadius thick ring outside of the target region
-    InitializerRandom<PatchDistanceFunctorType> initializer;
-    initializer.SetPatchDistanceFunctor(&patchDistanceFunctor);
-    initializer.SetTargetMask(targetMask);
-    initializer.SetSourceMask(this->SourceMask);
-    initializer.SetPatchRadius(this->PatchRadius);
-    initializer.Initialize(this->NNField);
+  // Initialize the NNField in the PatchRadius thick ring outside of the target region
+  InitializerRandom<PatchDistanceFunctorType> initializer;
+  initializer.SetPatchDistanceFunctor(&patchDistanceFunctor);
+  initializer.SetTargetMask(targetMask);
+  initializer.SetSourceMask(this->SourceMask);
+  initializer.SetPatchRadius(this->PatchRadius);
+  initializer.Initialize(this->NNField);
 
-    PatchMatchHelpers::WriteNNField(this->NNField.GetPointer(), "BDSInpaintingRings_RandomInit.mha");
+  PatchMatchHelpers::WriteNNField(this->NNField.GetPointer(), "BDSInpaintingRings_RandomInit.mha");
 
-    // Setup the PatchMatch functor
-    PatchMatch patchMatchFunctor;
-    //patchMatchFunctor.SetIterations(3);
-    patchMatchFunctor.SetIterations(1);
-    //patchMatchFunctor.Compute(nnField, &propagationFunctor, &randomSearcher, processFunctor); // This will be done in the loop
+  // Setup the PatchMatch functor
+  PatchMatch patchMatchFunctor;
+  patchMatchFunctor.SetIterations(3);
+  //patchMatchFunctor.SetIterations(1);
+  //patchMatchFunctor.Compute(nnField, &propagationFunctor, &randomSearcher, processFunctor); // This will be done in the loop
 
-    PatchMatchHelpers::WriteNNField(this->NNField.GetPointer(), "BDSInpaintingRings_FirstPatchMatch.mha");
+  PatchMatchHelpers::WriteNNField(this->NNField.GetPointer(), "BDSInpaintingRings_BeforeConstrainedPatchMatch.mha");
 
-    float histogramMultiplierInitial = 2.0f;
-    //float histogramMultiplierStep = 0.2f;
-    float histogramMultiplierStep = 10;
+  float histogramMultiplierInitial = 2.0f;
+  //float histogramMultiplierStep = 0.2f;
+  float histogramMultiplierStep = 10;
 
-  //   float histogramMultiplierInitial = 3.0f;
-  //   float histogramMultiplierStep = 1.0f;
-    float histogramMultiplier = histogramMultiplierInitial;
+//   float histogramMultiplierInitial = 3.0f;
+//   float histogramMultiplierStep = 1.0f;
+  float histogramMultiplier = histogramMultiplierInitial;
 
-    unsigned int iteration = 0;
+  unsigned int iteration = 0;
 
-    auto testNoVerifiedMatch = [](const MatchSet& queryMatchSet)
-    {
-      return !queryMatchSet.HasVerifiedMatch();
-    };
+  auto testNoVerifiedMatch = [](const MatchSet& queryMatchSet)
+  {
+    return !queryMatchSet.HasVerifiedMatch();
+  };
 
-    WriteSlot patchMatchWriter("BDS_Phase1");
-    auto pmWriter = [&patchMatchWriter](PatchMatchHelpers::NNFieldType* nnField){patchMatchWriter.Write(nnField);};
-    patchMatchFunctor.UpdatedSignal.connect(pmWriter);
+  WriteSlot patchMatchWriter("BDS_Phase1");
+  auto pmWriter = [&patchMatchWriter](PatchMatchHelpers::NNFieldType* nnField){patchMatchWriter.Write(nnField);};
+  patchMatchFunctor.UpdatedSignal.connect(pmWriter);
 
-    while(PatchMatchHelpers::CountTestedPixels(this->NNField.GetPointer(),
-            targetMask, testNoVerifiedMatch) > 0)
-    {
-      std::cout << "There are "
-                << PatchMatchHelpers::CountTestedPixels(this->NNField.GetPointer(),
-                                                        targetMask, testNoVerifiedMatch)
-                << " pixels without a verified match remaining." << std::endl;
+  while((PatchMatchHelpers::CountTestedPixels(this->NNField.GetPointer(),
+          targetMask, testNoVerifiedMatch) > 0) &&
+        (histogramMultiplier <= 5))
+  {
+    std::cout << "There are "
+              << PatchMatchHelpers::CountTestedPixels(this->NNField.GetPointer(),
+                                                      targetMask, testNoVerifiedMatch)
+              << " pixels without a verified match remaining." << std::endl;
 
-      neighborHistogramRatioAcceptanceTest.SetMaxNeighborHistogramRatio(histogramMultiplier);
+    neighborHistogramRatioAcceptanceTest.SetMaxNeighborHistogramRatio(histogramMultiplier);
 
-      patchMatchFunctor.Compute(this->NNField, &propagationFunctor, &randomSearcher,
-                                processFunctor);
+    patchMatchFunctor.Compute(this->NNField, &propagationFunctor, &randomSearcher,
+                              processFunctor);
 
-      PatchMatchHelpers::WriteNNField(this->NNField.GetPointer(),
-                                      Helpers::GetSequentialFileName("BDSInpaintingRings_PropagatedNNField",
-                                                                     iteration, "mha"));
-      histogramMultiplier += histogramMultiplierStep;
-      std::cout << "Increased histogramMultiplier to " << histogramMultiplier << std::endl;
+    PatchMatchHelpers::WriteNNField(this->NNField.GetPointer(),
+                                    Helpers::GetSequentialFileName("BDSInpaintingRings_PropagatedNNField",
+                                                                   iteration, "mha"));
+    histogramMultiplier += histogramMultiplierStep;
+    std::cout << "Increased histogramMultiplier to " << histogramMultiplier << std::endl;
 
-      if(histogramMultiplier > 5)
-      {
-        break;
-      }
-
-      iteration++;
-    }
-
+    iteration++;
+  }
 }
 
 template <typename TImage>
 void BDSInpaintingRings<TImage>::ForcePropagation(Mask* const targetMask)
 {
-    std::cout << "Starting propagation only phase..." << std::endl;
+  std::cout << "Starting propagation only phase..." << std::endl;
 
-    ProcessUnverifiedValidMaskPixels unverifiedProcessFunctor(this->NNField, targetMask);
+  ProcessUnverifiedValidMaskPixels unverifiedProcessFunctor(this->NNField, targetMask);
 
-    // Create the HSV image
-    typedef itk::VectorImage<float, 2> HSVImageType;
-    HSVImageType::Pointer hsvImage = HSVImageType::New();
-    ITKHelpers::ITKImageToHSVImage(this->Image.GetPointer(), hsvImage.GetPointer());
-    ITKHelpers::WriteImage(hsvImage.GetPointer(), "HSV.mha");
+  // Create the HSV image
+  typedef itk::VectorImage<float, 2> HSVImageType;
+  HSVImageType::Pointer hsvImage = HSVImageType::New();
+  ITKHelpers::ITKImageToHSVImage(this->Image.GetPointer(), hsvImage.GetPointer());
+  ITKHelpers::WriteImage(hsvImage.GetPointer(), "HSV.mha");
 
-    // Setup the patch distance functor
-    typedef SSD<TImage> PatchDistanceFunctorType;
-    PatchDistanceFunctorType patchDistanceFunctor;
-    patchDistanceFunctor.SetImage(this->Image);
+  // Setup the patch distance functor
+  typedef SSD<TImage> PatchDistanceFunctorType;
+  PatchDistanceFunctorType patchDistanceFunctor;
+  patchDistanceFunctor.SetImage(this->Image);
 
-    typedef AcceptanceTestSourceRegion AcceptanceTestSourceRegionType;
-    AcceptanceTestSourceRegion acceptanceTestSourceRegion(this->SourceMask);
-    acceptanceTestSourceRegion.SetIncludeInScore(false);
+  typedef AcceptanceTestSourceRegion AcceptanceTestSourceRegionType;
+  AcceptanceTestSourceRegion acceptanceTestSourceRegion(this->SourceMask);
+  acceptanceTestSourceRegion.SetIncludeInScore(false);
 
-    // The only acceptance test we want to apply is to make sure the propagated
-    // patch is actually valid (completely in the source region)
-    typedef PropagatorForwardBackward<PatchDistanceFunctorType,
-            AcceptanceTestSourceRegionType> ForcePropagatorType;
-    ForcePropagatorType forcePropagator;
-    forcePropagator.SetPatchRadius(this->PatchRadius);
-    forcePropagator.SetAcceptanceTest(&acceptanceTestSourceRegion);
-    forcePropagator.SetPatchDistanceFunctor(&patchDistanceFunctor);
-    forcePropagator.SetProcessFunctor(&unverifiedProcessFunctor);
+  // The only acceptance test we want to apply is to make sure the propagated
+  // patch is actually valid (completely in the source region)
+  typedef PropagatorForwardBackward<PatchDistanceFunctorType,
+          AcceptanceTestSourceRegionType> ForcePropagatorType;
+  ForcePropagatorType forcePropagator;
+  forcePropagator.SetPatchRadius(this->PatchRadius);
+  forcePropagator.SetAcceptanceTest(&acceptanceTestSourceRegion);
+  forcePropagator.SetPatchDistanceFunctor(&patchDistanceFunctor);
+  forcePropagator.SetProcessFunctor(&unverifiedProcessFunctor);
 
-    WritePatchPair<TImage> forcedPropagatedPatchPairWriter(this->Image, this->PatchRadius, "ForcedPropagatedPairs");
+  WritePatchPair<TImage> forcedPropagatedPatchPairWriter(this->Image, this->PatchRadius, "ForcedPropagatedPairs");
 
-    auto forcedPropagatedPairWriter = [&forcedPropagatedPatchPairWriter](const itk::Index<2>& queryCenter, const itk::Index<2>& matchCenter, const float score)
-                      {forcedPropagatedPatchPairWriter.Write(queryCenter, matchCenter, score);};
-    forcePropagator.AcceptedSignal.connect(forcedPropagatedPairWriter);
+  auto forcedPropagatedPairWriter = [&forcedPropagatedPatchPairWriter](const itk::Index<2>& queryCenter, const itk::Index<2>& matchCenter, const float score)
+                    {forcedPropagatedPatchPairWriter.Write(queryCenter, matchCenter, score);};
+  forcePropagator.AcceptedSignal.connect(forcedPropagatedPairWriter);
 
-    OutputPixelSlot outputPixelFunctor;
-    auto outputPixelSlot = [&outputPixelFunctor](const itk::Index<2>& index)
-                      {outputPixelFunctor.OutputPixel(index);};
-    forcePropagator.ProcessPixelSignal.connect(outputPixelSlot);
+  OutputPixelSlot outputPixelFunctor;
+  auto outputPixelSlot = [&outputPixelFunctor](const itk::Index<2>& index)
+                    {outputPixelFunctor.OutputPixel(index);};
+  forcePropagator.ProcessPixelSignal.connect(outputPixelSlot);
 
-    NeighborTestVerified verifiedNeighborTest(this->NNField);
+  NeighborTestVerified verifiedNeighborTest(this->NNField);
 
-    NeighborTestValidMask validMaskNeighborTest(targetMask);
+  NeighborTestValidMask validMaskNeighborTest(targetMask);
 
-    Neighbors verifiedForwardNeighbors;
-    verifiedForwardNeighbors.SetRegion(this->NNField->GetLargestPossibleRegion());
-    verifiedForwardNeighbors.AddNeighborTest(&verifiedNeighborTest);
-    verifiedForwardNeighbors.AddNeighborTest(&validMaskNeighborTest);
-    NeighborTestForward forwardNeighborTest;
-    verifiedForwardNeighbors.AddNeighborTest(&forwardNeighborTest);
-    forcePropagator.SetForwardNeighborFunctor(&verifiedForwardNeighbors);
+  Neighbors verifiedForwardNeighbors;
+  verifiedForwardNeighbors.SetRegion(this->NNField->GetLargestPossibleRegion());
+  verifiedForwardNeighbors.AddNeighborTest(&verifiedNeighborTest);
+  verifiedForwardNeighbors.AddNeighborTest(&validMaskNeighborTest);
+  NeighborTestForward forwardNeighborTest;
+  verifiedForwardNeighbors.AddNeighborTest(&forwardNeighborTest);
+  forcePropagator.SetForwardNeighborFunctor(&verifiedForwardNeighbors);
 
-    Neighbors verifiedBackwardNeighbors;
-    verifiedBackwardNeighbors.SetRegion(this->NNField->GetLargestPossibleRegion());
-    verifiedBackwardNeighbors.AddNeighborTest(&verifiedNeighborTest);
-    verifiedBackwardNeighbors.AddNeighborTest(&validMaskNeighborTest);
-    NeighborTestBackward backwardNeighborTest;
-    verifiedBackwardNeighbors.AddNeighborTest(&backwardNeighborTest);
-    forcePropagator.SetBackwardNeighborFunctor(&verifiedBackwardNeighbors);
+  Neighbors verifiedBackwardNeighbors;
+  verifiedBackwardNeighbors.SetRegion(this->NNField->GetLargestPossibleRegion());
+  verifiedBackwardNeighbors.AddNeighborTest(&verifiedNeighborTest);
+  verifiedBackwardNeighbors.AddNeighborTest(&validMaskNeighborTest);
+  NeighborTestBackward backwardNeighborTest;
+  verifiedBackwardNeighbors.AddNeighborTest(&backwardNeighborTest);
+  forcePropagator.SetBackwardNeighborFunctor(&verifiedBackwardNeighbors);
 
-    auto testNoVerifiedMatch = [](const MatchSet& queryMatchSet)
-    {
-      return !queryMatchSet.HasVerifiedMatch();
-    };
+  auto testNoVerifiedMatch = [](const MatchSet& queryMatchSet)
+  {
+    return !queryMatchSet.HasVerifiedMatch();
+  };
 
-    unsigned int iteration = 0;
-    while(PatchMatchHelpers::CountTestedPixels(this->NNField.GetPointer(),
-            targetMask, testNoVerifiedMatch) > 0)
-    {
-      std::cout << "Phase 2: There are "
-                << PatchMatchHelpers::CountTestedPixels(this->NNField.GetPointer(),
-                                                        targetMask, testNoVerifiedMatch)
-                << " pixels without a verified match remaining." << std::endl;
+  unsigned int iteration = 0;
 
-      bool force = true;
-      forcePropagator.Propagate(this->NNField, force);
+  while(PatchMatchHelpers::CountTestedPixels(this->NNField.GetPointer(),
+          targetMask, testNoVerifiedMatch) > 0)
+  {
+    std::cout << "Phase 2: There are "
+              << PatchMatchHelpers::CountTestedPixels(this->NNField.GetPointer(),
+                                                      targetMask, testNoVerifiedMatch)
+              << " pixels without a verified match remaining." << std::endl;
 
-      PatchMatchHelpers::WriteNNField(this->NNField.GetPointer(),
-                                      Helpers::GetSequentialFileName("BDSRings_NNField_ForceProp",
-                                                                     iteration, "mha"));
+    bool force = true;
+    unsigned int numberOfPropagatedPixels = forcePropagator.Propagate(this->NNField, force);
 
-      // Mark the pixels that were propagated to in the last iteration so that they can be used in the next iteration.
-      // Without this, we would only be able to forcefully propagate to 1 pixel away from verified pixels.
-      itk::ImageRegionIteratorWithIndex<PatchMatchHelpers::NNFieldType>
-         fieldIterator(this->NNField, this->NNField->GetLargestPossibleRegion());
-
-      while(!fieldIterator.IsAtEnd())
-      {
-        MatchSet matchSet = fieldIterator.Get();
-        if(matchSet.GetNumberOfMatches() > 0 && !matchSet.GetMatch(0).GetAllowPropagation())
-        {
-          matchSet.GetMatch(0).SetAllowPropagation(true);
-        }
-        ++fieldIterator;
-      }
-
-      //break; // TODO: Remove this
-      iteration++;
-    }
     PatchMatchHelpers::WriteNNField(this->NNField.GetPointer(),
-                                    "BDSInpaintingRings_BoundaryNNField.mha");
+                                    Helpers::GetSequentialFileName("BDSRings_NNField_ForceProp",
+                                                                   iteration, "mha"));
+
+    // Mark the pixels that were propagated to in the last iteration so that they can be used in the next iteration.
+    // Without this, we would only be able to forcefully propagate to 1 pixel away from verified pixels.
+    itk::ImageRegionIteratorWithIndex<PatchMatchHelpers::NNFieldType>
+       fieldIterator(this->NNField, this->NNField->GetLargestPossibleRegion());
+
+    while(!fieldIterator.IsAtEnd())
+    {
+      MatchSet matchSet = fieldIterator.Get();
+      if(matchSet.GetNumberOfMatches() > 0 && !matchSet.GetMatch(0).GetAllowPropagation())
+      {
+        matchSet.GetMatch(0).SetAllowPropagation(true);
+      }
+      ++fieldIterator;
+    }
+
+    if(numberOfPropagatedPixels == 0)
+    {
+      throw std::runtime_error("Forced propagated zero pixels!");
+    }
+
+    iteration++;
+  }
+  PatchMatchHelpers::WriteNNField(this->NNField.GetPointer(),
+                                  "BDSInpaintingRings_BoundaryNNField.mha");
 }
 
 template <typename TImage>
 void BDSInpaintingRings<TImage>::ClearUnverifiedPixels()
 {
 
-    // Clear all matches for patches that still do not have a good (verified) match
-    // This means it remains from the random initialization.
+  // Clear all matches for patches that still do not have a good (verified) match
+  // This means it remains from the random initialization.
 //    auto noVerifiedMatchFunctor = [NNField](const itk::Index<2>& index)
 //                                {
 //                                  // Don't process pixels that have a verified match
@@ -415,22 +414,26 @@ void BDSInpaintingRings<TImage>::ClearUnverifiedPixels()
 //                                  NNField->SetPixel(index, matchSet);
 //                                };
 
-    //   ITKHelpers::ApplyOperationToTestedPixels(nnField.GetPointer(),
-    //                                            noVerifiedMatchFunctor, clearFunctor);
+//   ITKHelpers::ApplyOperationToTestedPixels(nnField.GetPointer(),
+//                                            noVerifiedMatchFunctor, clearFunctor);
 
-    //   PatchMatchHelpers::WriteVerifiedPixels(nnField.GetPointer(), "VerifiedPixels.mha");
+//   PatchMatchHelpers::WriteVerifiedPixels(nnField.GetPointer(), "VerifiedPixels.mha");
 
 }
 
-template <typename TImage>
-void BDSInpaintingRings<TImage>::FillHole()
-{
-//    // Keep track of which ring we are on
-//    unsigned int ringCounter = 0;
 
-//    // Perform ring-at-a-time inpainting
-//    while(currentTargetMask->HasValidPixels())
-//    {
+template <typename TImage>
+void BDSInpaintingRings<TImage>::SinglePixelRings()
+{
+//  // Keep track of which ring we are on
+//  unsigned int ringCounter = 0;
+
+//  Mask::Pointer currentTargetMask = Mask::New();
+//  currentTargetMask->DeepCopyFrom(this->TargetMask);
+
+//  // Perform ring-at-a-time inpainting
+//  while(currentTargetMask->HasValidPixels())
+//  {
 //    // Get the inside boundary of the target region
 //    Mask::BoundaryImageType::Pointer boundaryImage = Mask::BoundaryImageType::New();
 //    // In the resulting boundary image, the boundary will be 255.
@@ -475,9 +478,68 @@ void BDSInpaintingRings<TImage>::FillHole()
 //    currentTargetMask->ExpandHole(kernelRadius);
 
 //    ringCounter++;
-//    }
+//  }
 
-//    ITKHelpers::DeepCopy(currentImage.GetPointer(), this->Output.GetPointer());
+//  ITKHelpers::DeepCopy(currentImage.GetPointer(), this->Output.GetPointer());
+}
+
+template <typename TImage>
+void BDSInpaintingRings<TImage>::FillHole(Mask* const targetMask)
+{
+  Compositor<TImage, PixelCompositorAverage> compositor;
+  compositor.SetImage(this->Output); // We operate on the current intermediate image
+  compositor.SetPatchRadius(this->PatchRadius);
+  compositor.SetTargetMask(targetMask);
+  compositor.SetNearestNeighborField(this->NNField);
+  compositor.Composite();
+
+//  ITKHelpers::WriteSequentialImage(compositor.GetOutput(),
+//                                   "BDSRings_InpaintedRing", ringCounter, 4, "png");
+
+  // Copy the filled ring into the image for the next iteration
+  ITKHelpers::DeepCopy(compositor.GetOutput(), this->Output.GetPointer());
+
+}
+
+template <typename TImage>
+void BDSInpaintingRings<TImage>::PatchRadiusThickRings()
+{
+    // Keep track of which ring we are on
+    unsigned int ringCounter = 0;
+
+    Mask::Pointer remainingHoleMask = Mask::New();
+    remainingHoleMask->DeepCopyFrom(this->TargetMask);
+
+    // Perform patch-radius-thick-ring-at-a-time inpainting
+    while(remainingHoleMask->HasValidPixels())
+    {
+      // Get the inside boundary of the target region
+      Mask::Pointer shrunkHole = Mask::New();
+      shrunkHole->DeepCopyFrom(remainingHoleMask);
+      shrunkHole->ExpandHole(this->PatchRadius);
+
+      Mask::Pointer ringMask = Mask::New();
+      // Get the difference (XOR) between the original hole and the expanded hole
+      ITKHelpers::XORImages(remainingHoleMask.GetPointer(), shrunkHole.GetPointer(),
+                            ringMask.GetPointer(), this->TargetMask->GetValidValue());
+      ringMask->CopyInformationFrom(this->TargetMask);
+
+      FillHole(ringMask);
+
+      remainingHoleMask->DeepCopyFrom(shrunkHole);
+
+      ringCounter++;
+    }
+}
+
+template <typename TImage>
+void BDSInpaintingRings<TImage>::ComputeNNField(Mask* const targetMask)
+{
+  ProducePropagationBuffer();
+
+  ConstrainedPatchMatch(targetMask);
+
+  ForcePropagation(targetMask);
 }
 
 #endif

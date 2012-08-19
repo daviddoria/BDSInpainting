@@ -63,11 +63,20 @@ private:
     * selection location. */
   void ForcePropagation(Mask* const targetMask);
 
-  /** Perform the ring-at-a-time NNField computation and hole filling. */
-  void FillHole();
+  /** Perform a combination of propagation and random search steps, and composite the result. */
+  void FillHole(Mask* const targetMask);
 
   /** Remove all matches from the MatchSet at pixels which do not have a verified match. */
   void ClearUnverifiedPixels();
+
+  /** Fill the hole one one-pixel-thick ring at a time (from outside in) */
+  void SinglePixelRings();
+
+  /** Fill the hole one patch-radius-thick ring at a time (from outside in) */
+  void PatchRadiusThickRings();
+
+  /** Compute the NNField using a combination of verified propagation, random search, and forced propagation steps. */
+  void ComputeNNField(Mask* const targetMask);
 };
 
 #include "BDSInpaintingRings.hpp"
