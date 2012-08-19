@@ -38,11 +38,36 @@ public:
 
 private:
 
-  /** Expand the target region to include the "patch-radius-thick ring"
-    * around the original hole. We do not need to composite in this region,
-    * but we do need to compute the NNField here (as it will be used in the compositing) */
-  void ExpandMask();
+  /** Get the "patch-radius-thick ring" around the original hole. We do not
+    * need to composite in this region,
+    * but we do need to compute the NNField here (as it is non-trivial
+    * (since the trivial NN (itself) is not completely a valid patch),
+    * and they will be used in the compositing) */
+  void GetSurroundingRingMask(Mask* surroundingMask);
 
+  /** Initialize the known region by setting the NN's of each pixel whose surrounding
+    * patch is entirely outside the hole. */
+  void InitializeKnownRegion();
+
+  /** Shrink the source region around the image boundary and around the hole.
+    * The idea is to allow a patch in this region to be propagated the width of the ring
+    * without running into the hole. */
+  void ProducePropagationBuffer();
+
+  /** Run several iterations of the PatchMatch algorithm with neighbor-histogram difference
+    * verification */
+  void ConstrainedPatchMatch(Mask* const targetMask);
+
+  /** Run forced propagation until either the target region is filled or the
+    * propagation has been completely restricted by hole geometry and patch
+    * selection location. */
+  void ForcePropagation(Mask* const targetMask);
+
+  /** Perform the ring-at-a-time NNField computation and hole filling. */
+  void FillHole();
+
+  /** Remove all matches from the MatchSet at pixels which do not have a verified match. */
+  void ClearUnverifiedPixels();
 };
 
 #include "BDSInpaintingRings.hpp"

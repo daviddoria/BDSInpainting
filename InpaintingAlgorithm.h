@@ -61,6 +61,9 @@ public:
 
 protected:
 
+  /** The nearest neighbor field that is computed and used for compositing. */
+  typename PatchMatchHelpers::NNFieldType::Pointer NNField;
+
   /** The number of iterations to run. */
   unsigned int Iterations;
 
