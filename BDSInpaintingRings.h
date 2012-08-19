@@ -56,7 +56,8 @@ private:
 
   /** Run several iterations of the PatchMatch algorithm with neighbor-histogram difference
     * verification */
-  void ConstrainedPatchMatch(Mask* const targetMask);
+  void ConstrainedPatchMatch(Mask* const targetMask, const float histogramRatioStart,
+                             const float histogramRatioStep, const float maxHistogramRatio);
 
   /** Run forced propagation until either the target region is filled or the
     * propagation has been completely restricted by hole geometry and patch
