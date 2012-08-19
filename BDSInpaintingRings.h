@@ -32,7 +32,17 @@ public:
 
   BDSInpaintingRings();
 
+  /** Perform the NNField computation and compositing for the entire hole
+    * (and the boundary around it, as prescribed by ExpandMask() ) */
   void Inpaint();
+
+private:
+
+  /** Expand the target region to include the "patch-radius-thick ring"
+    * around the original hole. We do not need to composite in this region,
+    * but we do need to compute the NNField here (as it will be used in the compositing) */
+  void ExpandMask();
+
 };
 
 #include "BDSInpaintingRings.hpp"
