@@ -32,7 +32,7 @@
 #include <ctime>
 
 template <typename TImage, typename TPixelCompositor>
-Compositor<TImage, TPixelCompositor>::Compositor() : PatchRadius(0)
+Compositor<TImage, TPixelCompositor>::Compositor() : PatchRadius(0), NearestNeighborField(NULL)
 {
   this->Output = TImage::New();
   this->Image = TImage::New();
@@ -73,6 +73,7 @@ void Compositor<TImage, TPixelCompositor>::Composite()
 
   assert(this->NearestNeighborField);
   assert(this->TargetMask);
+  assert(this->TargetMask->GetLargestPossibleRegion() == this->Image->GetLargestPossibleRegion());
   assert(this->PatchRadius > 0);
 //   std::cout << "Compositor::Compute()..." << std::endl;
 //   ITKHelpers::WriteRGBImage(oldImage, "Compositor_Compute_OldImage.png");
@@ -137,12 +138,14 @@ void Compositor<TImage, TPixelCompositor>::Composite()
     {
       itk::Index<2> containingRegionCenter =
                   ITKHelpers::GetRegionCenter(patchesContainingPixel[containingPatchId]);
-      Match bestMatch = this->NearestNeighborField->GetPixel(containingRegionCenter).GetMatch(0);
+      MatchSet matchSet = this->NearestNeighborField->GetPixel(containingRegionCenter);
+      assert(matchSet.GetNumberOfMatches() > 0);
+      Match bestMatch = matchSet.GetMatch(0);
       assert(bestMatch.IsValid());
 
       itk::ImageRegion<2> bestMatchRegion = bestMatch.GetRegion();
 
-      //assert(fullRegion.IsInside(bestMatchRegion));
+      assert(fullRegion.IsInside(bestMatchRegion));
 
       itk::Index<2> bestMatchRegionCenter = ITKHelpers::GetRegionCenter(bestMatchRegion);
 

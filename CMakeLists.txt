@@ -57,5 +57,10 @@ if(BDSInpainting_BuildDrivers)
  add_subdirectory(Drivers)
 endif()
 
+SET(BDSInpainting_BuildTests ON CACHE BOOL "BDSInpainting build tests?")
+if(BDSInpainting_BuildTests)
+ add_subdirectory(Tests)
+endif()
+
 GET_DIRECTORY_PROPERTY(AllBDSInpaintingIncludes INCLUDE_DIRECTORIES)
 message("BDSInpainting include directories: ${AllBDSInpaintingIncludes}")
