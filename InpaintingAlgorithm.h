@@ -40,9 +40,6 @@ class InpaintingAlgorithm
 {
 public:
 
-  /** Constructor. */
-  InpaintingAlgorithm();
-
   /** Get the resulting inpainted image. */
   TImage* GetOutput();
 
@@ -55,35 +52,26 @@ public:
   /** Set the image to fill. */
   void SetImage(TImage* const image);
 
-  /** Set the mask that indicates where to take source patches from. Source patches
-    * are patches that are entirely in the Valid region.*/
-  void SetSourceMask(Mask* const mask);
-
   /** Set the mask that indicates where to fill the image. Pixels in the Hole region should be filled.*/
-  void SetTargetMask(Mask* const mask);
+  void SetInpaintingMask(Mask* const mask);
 
 protected:
 
-  /** The nearest neighbor field that is computed and used for compositing. */
-  typename NNFieldType::Pointer NNField;
-
   /** The number of iterations to run. */
-  unsigned int Iterations;
+  unsigned int Iterations = 0;
 
   /** The radius of the patches to use for inpainting. */
-  unsigned int PatchRadius;
+  unsigned int PatchRadius = 0;
 
   /** The output image. */
-  typename TImage::Pointer Output;
+  typename TImage::Pointer Output = TImage::New();
 
   /** The image to fill. */
-  typename TImage::Pointer Image;
+  typename TImage::Pointer Image = TImage::New();
 
-  /** The mask where Hole pixels indicate the pixels to fill. */
-  Mask::Pointer TargetMask;
+  /** The mask describing the hole pixels to fill. */
+  Mask::Pointer InpaintingMask = Mask::New();
 
-  /** The mask where fully 'valid' patches are allowed to be matches. */
-  Mask::Pointer SourceMask;
 };
 
 #include "InpaintingAlgorithm.hpp"

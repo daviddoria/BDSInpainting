@@ -67,19 +67,19 @@ public:
 protected:
 
   /** The radius of the patches to use for inpainting. */
-  unsigned int PatchRadius;
+  unsigned int PatchRadius = 0;
 
   /** The output image. */
-  typename TImage::Pointer Output;
+  typename TImage::Pointer Output = nullptr;
 
   /** The image to fill. */
-  typename TImage::Pointer Image;
+  typename TImage::Pointer Image = nullptr;
 
   /** The mask where Hole pixels indicate the pixels to fill. */
-  Mask::Pointer TargetMask;
+  Mask::Pointer TargetMask = nullptr;
 
   /** The nearest neighbor field to use. */
-  NNFieldType* NearestNeighborField;
+  NNFieldType* NearestNeighborField = nullptr;
 };
 
 #include "Compositor.hpp"

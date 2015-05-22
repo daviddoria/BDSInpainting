@@ -35,20 +35,6 @@
 #include <ctime>
 
 template <typename TImage>
-BDSInpainting<TImage>::BDSInpainting() : ResolutionLevels(3), Iterations(5),
-                                         PatchRadius(7),
-                                         PatchMatchFunctor(NULL),
-                                         DownsampleFactor(.5),
-                                         CompositingMethod(WEIGHTED_AVERAGE),
-                                         TrustAllPixels(false)
-{
-  this->Output = TImage::New();
-  this->Image = TImage::New();
-  this->SourceMask = Mask::New();
-  this->TargetMask = Mask::New();
-}
-
-template <typename TImage>
 void BDSInpainting<TImage>::Inpaint()
 {
 

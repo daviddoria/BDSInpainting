@@ -46,9 +46,9 @@
 int main(int argc, char*argv[])
 {
   // Parse the input
-  if(argc < 6)
+  if(argc < 5)
   {
-    std::cerr << "Required arguments: image sourceMask.mask targetMask.mask patchRadius output" << std::endl;
+    std::cerr << "Required arguments: image mask.mask patchRadius outputImage" << std::endl;
     return EXIT_FAILURE;
   }
 
@@ -59,17 +59,15 @@ int main(int argc, char*argv[])
   }
 
   std::string imageFilename;
-  std::string sourceMaskFilename;
-  std::string targetMaskFilename;
+  std::string maskFilename;
   unsigned int patchRadius;
   std::string outputFilename;
 
-  ss >> imageFilename >> sourceMaskFilename >> targetMaskFilename >> patchRadius >> outputFilename;
+  ss >> imageFilename >> maskFilename >> patchRadius >> outputFilename;
 
   // Output the parsed values
   std::cout << "imageFilename: " << imageFilename << std::endl
-            << "sourceMaskFilename: " << sourceMaskFilename << std::endl
-            << "targetMaskFilename: " << targetMaskFilename << std::endl
+            << "maskFilename: " << maskFilename << std::endl
             << "patchRadius: " << patchRadius << std::endl
             << "outputFilename: " << outputFilename << std::endl;
 
@@ -83,17 +81,12 @@ int main(int argc, char*argv[])
 
   ImageType* image = imageReader->GetOutput();
 
-  Mask::Pointer sourceMask = Mask::New();
-  sourceMask->Read(sourceMaskFilename);
-
-  Mask::Pointer targetMask = Mask::New();
-  targetMask->Read(targetMaskFilename);
+  Mask::Pointer mask = Mask::New();
+  mask->Read(maskFilename);
 
   //std::cout << "target mask has " << targetMask->CountHolePixels() << " hole pixels." << std::endl;
 
   // Poisson fill the input image
-
-
   typename PoissonEditingParent::GuidanceFieldType::Pointer zeroGuidanceField =
             PoissonEditingParent::GuidanceFieldType::New();
   zeroGuidanceField->SetRegions(image->GetLargestPossibleRegion());
@@ -104,39 +97,31 @@ int main(int argc, char*argv[])
 
   ImageType::Pointer filledImage = ImageType::New();
 
-  FillImage(image, targetMask, zeroGuidanceField, filledImage.GetPointer(),
+  FillImage(image, mask.GetPointer(), zeroGuidanceField, filledImage.GetPointer(),
             image->GetLargestPossibleRegion());
 
   ITKHelpers::WriteRGBImage(filledImage.GetPointer(), "PoissonFilled.png");
 
-  // PatchMatch requires that the target region be specified by valid pixels
-  targetMask->InvertData();
-
   // Setup the patch distance functor
   typedef SSD<ImageType> PatchDistanceFunctorType;
   PatchDistanceFunctorType* patchDistanceFunctor = new PatchDistanceFunctorType;
-  patchDistanceFunctor->SetImage(image);
+  patchDistanceFunctor->SetImage(filledImage);
 
   typedef Propagator<PatchDistanceFunctorType> PropagatorType;
   PropagatorType* propagator = new PropagatorType;
-  propagator->SetPatchDistanceFunctor(patchDistanceFunctor);
 
   typedef RandomSearch<ImageType, PatchDistanceFunctorType> RandomSearchType;
   RandomSearchType* randomSearchFunctor = new RandomSearchType;
-  randomSearchFunctor->SetPatchDistanceFunctor(patchDistanceFunctor);
-  randomSearchFunctor->SetImage(image);
-  randomSearchFunctor->SetPatchRadius(patchRadius);
-
 
   // Setup the PatchMatch functor
   PatchMatch<ImageType, PropagatorType, RandomSearchType> patchMatchFunctor;
   patchMatchFunctor.SetPatchRadius(patchRadius);
-  patchMatchFunctor.SetIterations(1);
+  patchMatchFunctor.SetIterations(5);
   patchMatchFunctor.SetPropagationFunctor(propagator);
   patchMatchFunctor.SetRandomSearchFunctor(randomSearchFunctor);
+  patchMatchFunctor.SetImage(filledImage);
 
-  // Test the result of PatchMatch here
-  //patchMatchFunctor.SetRandom(false);
+  Compositor<ImageType, PixelCompositorAverage> compositor;
 
   // Here, the source match and target match are the same, specifying the classicial
   // "use pixels outside the hole to fill the pixels inside the hole".
@@ -144,14 +129,9 @@ int main(int argc, char*argv[])
   // improving the resulting inpainting.
   BDSInpainting<ImageType> bdsInpainting;
   bdsInpainting.SetPatchRadius(patchRadius);
-  bdsInpainting.SetImage(image);
-  bdsInpainting.SetSourceMask(sourceMask);
-  bdsInpainting.SetTargetMask(targetMask);
-
+  bdsInpainting.SetImage(filledImage);
+  bdsInpainting.SetInpaintingMask(mask);
   bdsInpainting.SetIterations(1);
-  //bdsInpainting.SetIterations(4);
-
-  Compositor<ImageType, PixelCompositorAverage> compositor;
   bdsInpainting.Inpaint(&patchMatchFunctor, &compositor);
 
   ITKHelpers::WriteRGBImage(bdsInpainting.GetOutput(), outputFilename);

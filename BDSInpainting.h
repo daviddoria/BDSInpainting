@@ -40,9 +40,6 @@ class BDSInpainting : public InpaintingAlgorithm<TImage>
 {
 public:
 
-  /** Constructor. */
-  BDSInpainting();
-
   typedef InpaintingAlgorithm<TImage> Superclass;
 
   /** Compute the nn-field for the target pixels and then composite the patches.*/

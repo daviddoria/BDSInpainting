@@ -35,17 +35,6 @@
 #include <ctime>
 
 template <typename TImage>
-InpaintingAlgorithm<TImage>::InpaintingAlgorithm() :
-          Iterations(0),
-          PatchRadius(0)
-{
-  this->Output = TImage::New();
-  this->Image = TImage::New();
-  this->SourceMask = Mask::New();
-  this->TargetMask = Mask::New();
-}
-
-template <typename TImage>
 TImage* InpaintingAlgorithm<TImage>::GetOutput()
 {
   return this->Output;
@@ -70,15 +59,9 @@ void InpaintingAlgorithm<TImage>::SetImage(TImage* const image)
 }
 
 template <typename TImage>
-void InpaintingAlgorithm<TImage>::SetSourceMask(Mask* const mask)
+void InpaintingAlgorithm<TImage>::SetInpaintingMask(Mask* const mask)
 {
-  ITKHelpers::DeepCopy(mask, this->SourceMask.GetPointer());
-}
-
-template <typename TImage>
-void InpaintingAlgorithm<TImage>::SetTargetMask(Mask* const mask)
-{
-  ITKHelpers::DeepCopy(mask, this->TargetMask.GetPointer());
+  ITKHelpers::DeepCopy(mask, this->InpaintingMask.GetPointer());
 }
 
 #endif

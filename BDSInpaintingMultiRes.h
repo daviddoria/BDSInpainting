@@ -32,9 +32,6 @@ public:
   // Inherited typedefs
   typedef typename Superclass::PatchMatchFunctorType PatchMatchFunctorType;
 
-  /** Constructor. */
-  BDSInpaintingMultiRes();
-
   /** This function does the actual work of inpainting a single level.
     * It is called from Compute() at multiple resolutions. */
   void Compute(TImage* const image, Mask* const sourceMask, Mask* const targetMask,
@@ -44,17 +41,16 @@ public:
   /** Set the number of resolution levels to use. */
   void SetResolutionLevels(const unsigned int resolutionLevels);
 
-    /** Set the amount to downsample the image to construct the different resolutions. */
+  /** Set the amount to downsample the image to construct the different resolutions. */
   void SetDownsampleFactor(const float downsampleFactor);
 
+private:
 
   /** The number of resolutions to use. */
-  unsigned int ResolutionLevels;
+  unsigned int ResolutionLevels = 3;
 
   /** How much to downsample the image at each level. */
-  float DownsampleFactor;
-
-private:
+  float DownsampleFactor = 0.5;
 
 };
 

@@ -39,27 +39,16 @@
 #include <ctime>
 
 template <typename TImage>
-BDSInpainting<TImage>::BDSInpainting() : InpaintingAlgorithm<TImage>()
-{
-}
-
-template <typename TImage>
 template <typename TPatchMatchFunctor, typename TCompositor>
 void BDSInpainting<TImage>::Inpaint(TPatchMatchFunctor* const patchMatchFunctor,
                                     TCompositor* const compositor)
 {
-  assert(this->Image->GetLargestPossibleRegion().GetSize()[0] > 0);
-  assert(this->SourceMask->GetLargestPossibleRegion().GetSize()[0] > 0);
-  assert(this->TargetMask->GetLargestPossibleRegion().GetSize()[0] > 0);
+  assert(this->Image);
+  assert(this->InpaintingMask);
 
   // Initialize the output with the input
   typename TImage::Pointer currentImage = TImage::New();
   ITKHelpers::DeepCopy(this->Image.GetPointer(), currentImage.GetPointer());
-
-  // This is done so that the "full region" (the entire images) does not have to be
-  // referenced using a particular image or mask. That is, 'SourceMask->GetLargestPossibleRegion()'
-  // would not raise the question "Why is this region coming from the SourceMask?"
-  itk::ImageRegion<2> fullRegion = this->Image->GetLargestPossibleRegion();
 
   // Allocate the initial NNField
   NNFieldType::Pointer nnField =
@@ -72,55 +61,33 @@ void BDSInpainting<TImage>::Inpaint(TPatchMatchFunctor* const patchMatchFunctor,
   PatchDistanceFunctorType patchDistanceFunctor;
   patchDistanceFunctor.SetImage(currentImage);
 
-  //////////////////// The things in this block should probably be passed into this class
-  // Set acceptance test to histogram threshold
-  // Create the HSV image
-  typedef itk::VectorImage<float, 2> HSVImageType;
-  HSVImageType::Pointer hsvImage = HSVImageType::New();
-  ITKHelpers::ITKImageToHSVImage(currentImage.GetPointer(), hsvImage.GetPointer());
-  ITKHelpers::WriteImage(hsvImage.GetPointer(), "HSV.mha");
+  patchMatchFunctor->GetPropagationFunctor()->SetPatchDistanceFunctor(&patchDistanceFunctor);
+  patchMatchFunctor->GetPropagationFunctor()->SetPatchRadius(this->PatchRadius);
 
-  typedef Propagator<PatchDistanceFunctorType> PropagatorType;
-  PropagatorType propagationFunctor;
-  propagationFunctor.SetPatchDistanceFunctor(&patchDistanceFunctor);
-  propagationFunctor.SetPatchRadius(this->PatchRadius);
+  patchMatchFunctor->GetRandomSearchFunctor()->SetImage(this->Image);
+  patchMatchFunctor->GetRandomSearchFunctor()->SetPatchRadius(this->PatchRadius);
+  patchMatchFunctor->GetRandomSearchFunctor()->SetPatchDistanceFunctor(&patchDistanceFunctor);
 
-  typedef RandomSearch<TImage, PatchDistanceFunctorType>
-    RandomSearchType;
-  RandomSearchType randomSearcher;
-  randomSearcher.SetImage(this->Image);
-  randomSearcher.SetPatchDistanceFunctor(&patchDistanceFunctor);
-  //////////////////// The things above this block should probably be passed into this class
-
-  // Setup the PatchMatch functor. Use a generic (parent class) AcceptanceTest.
-  patchMatchFunctor->SetIterations(5);
+  compositor->SetPatchRadius(this->PatchRadius);
+  compositor->SetTargetMask(this->InpaintingMask);
+  compositor->SetImage(currentImage);
+  compositor->SetNearestNeighborField(patchMatchFunctor->GetNNField());
 
   for(unsigned int iteration = 0; iteration < this->Iterations; ++iteration)
   {
-    PatchMatchHelpers::WriteNNField(nnField.GetPointer(),
-                                        "InitializedKnownRegionNNField.mha"); // debug only
-
-    PatchMatchHelpers::WriteNNField(nnField.GetPointer(),
-                                        "InitializedRandomNNField.mha"); // debug only
-    // Give the PatchMatch functor the data
+    // Run PatchMatch to compute the NNField
     patchMatchFunctor->Compute();
 
-    PatchMatchHelpers::WriteNNField(nnField.GetPointer(), "PatchMatchNNField.mha");
+    std::stringstream ssNNFieldFileName;
+    ssNNFieldFileName << "BDS_" << iteration << "_NNField.mha";
+    PatchMatchHelpers::WriteNNField(patchMatchFunctor->GetNNField(), ssNNFieldFileName.str());
 
     // Update the target pixels
-    compositor->SetTargetMask(this->TargetMask);
-    compositor->SetImage(currentImage);
-    compositor->SetPatchRadius(this->PatchRadius);
-    compositor->SetNearestNeighborField(nnField);
     compositor->Composite();
-
     ITKHelpers::DeepCopy(compositor->GetOutput(), currentImage.GetPointer());
-    ITKHelpers::ITKImageToHSVImage(currentImage.GetPointer(), hsvImage.GetPointer());
   }
 
   ITKHelpers::DeepCopy(currentImage.GetPointer(), this->Output.GetPointer());
-
-  ITKHelpers::WriteRGBImage(this->Output.GetPointer(), "ComputeOutput.png");
 }
 
 #endif

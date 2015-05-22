@@ -1,1 +1,3 @@
-0 255 trashcan_mask.png
+hole 0
+valid 255
+trashcan_mask.png
