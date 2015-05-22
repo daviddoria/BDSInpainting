@@ -1,2 +1,4 @@
 .fuse_hidden*
 *.kate-swp
+*.user
+*~

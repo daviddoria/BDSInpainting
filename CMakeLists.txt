@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 2.6)
 
+# clear; ~/bin/cmake-3.2.2-Linux-x86_64/bin/cmake ~/src/BDSInpainting/ -DBoost_DEBUG=ON -DITK_DIR=/home/doriad/build/ITK_devel/ -DVTK_DIR=/home/doriad/build/VTK -DEIGEN3_INCLUDE_DIR=/home/doriad/src/eigen-3.2.1 -DBOOST_ROOT=/home/doriad/src/boost_1_55_0/
 PROJECT(BDSInpainting)
 SET(CMAKE_INCLUDE_CURRENT_DIR ON)
 
@@ -11,13 +12,13 @@ if(NOT ITK_FOUND)
   FIND_PACKAGE(ITK REQUIRED ITKCommon ITKIOImageBase ITKDistanceMap ITKIOPNG ITKIOMeta
                             ITKImageIntensity ITKImageFeature ITKMathematicalMorphology
                             ITKBinaryMathematicalMorphology)
-  INCLUDE(${USE_ITK_FILE})
+  INCLUDE(${ITK_USE_FILE})
 endif()
 
 # VTK
 if(NOT VTK_FOUND)
   FIND_PACKAGE(VTK REQUIRED)
-  INCLUDE(${USE_VTK_FILE})
+  INCLUDE(${VTK_USE_FILE})
 endif()
 
 # Submodules
@@ -57,10 +58,10 @@ if(BDSInpainting_BuildDrivers)
  add_subdirectory(Drivers)
 endif()
 
-SET(BDSInpainting_BuildTests ON CACHE BOOL "BDSInpainting build tests?")
-if(BDSInpainting_BuildTests)
- add_subdirectory(Tests)
-endif()
+#SET(BDSInpainting_BuildTests ON CACHE BOOL "BDSInpainting build tests?")
+#if(BDSInpainting_BuildTests)
+# add_subdirectory(Tests)
+#endif()
 
 GET_DIRECTORY_PROPERTY(AllBDSInpaintingIncludes INCLUDE_DIRECTORIES)
-message("BDSInpainting include directories: ${AllBDSInpaintingIncludes}")
+#message("BDSInpainting include directories: ${AllBDSInpaintingIncludes}")
