@@ -4,8 +4,10 @@ cmake_minimum_required(VERSION 2.6)
 PROJECT(BDSInpainting)
 SET(CMAKE_INCLUDE_CURRENT_DIR ON)
 
+add_subdirectory(CMakeHelpers)
+
 # Enable C++11
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=gnu++0x")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=gnu++11")
 
 # ITK
 if(NOT ITK_FOUND)
@@ -21,37 +23,51 @@ if(NOT VTK_FOUND)
   INCLUDE(${VTK_USE_FILE})
 endif()
 
+#### Eigen ####
+# Tell CMake to also look in the source directory to find some .cmake files
+set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_MODULE_PATH})
+
+# Set the CMake variable to the value of the environment variable.
+# If the build is absolutely fresh, this will be the case if the CMake variable EIGEN3_INCLUDE_DIR is not set.
+if(NOT EIGEN3_INCLUDE_DIR)
+  set(EIGEN3_INCLUDE_DIR $ENV{EIGEN3_INCLUDE_DIR})
+  message("Set EIGEN3_INCLUDE_DIR to ${EIGEN3_INCLUDE_DIR} from environment variable of the same name.")
+else()
+  message("EIGEN3_INCLUDE_DIR is ${EIGEN3_INCLUDE_DIR}")
+endif()
+
+if(NOT EIGEN3_FOUND)
+  FIND_PACKAGE(Eigen3 REQUIRED) #requires FindEigen3.cmake to be in the source directory
+  include_directories(${EIGEN3_INCLUDE_DIR})
+endif()
+
+# Boost
+set(Boost_NO_BOOST_CMAKE TRUE) # seems to avoid "add_library cannot create imported target" errors
+
+FIND_PACKAGE(Boost 1.51 REQUIRED) # The signals2 library is header only, so we don't need to / can't search for it in find_package
+
+IF (Boost_FOUND)
+    INCLUDE_DIRECTORIES(${Boost_INCLUDE_DIR})
+ENDIF()
+
 # Submodules
-if(NOT TARGET PatchMatch)
-  add_subdirectory(PatchMatch)
-  include_directories(${PatchMatch_includes})
-  set(BDSInpainting_includes ${BDSInpainting_includes} ${PatchMatch_includes})
-  set(BDSInpainting_libraries ${BDSInpainting_libraries} ${PatchMatch_libraries})
-endif()
+UseSubmodule(PatchMatch BDSInpainting)
+UseSubmodule(PoissonEditing BDSInpainting)
+UseSubmodule(ITKVTKHelpers BDSInpainting)
 
-if(NOT TARGET PoissonEditing)
-  add_subdirectory(PoissonEditing)
-  include_directories(${PoissonEditing_includes})
-  set(BDSInpainting_includes ${BDSInpainting_includes} ${PoissonEditing_includes})
-  set(BDSInpainting_libraries ${BDSInpainting_libraries} ${PoissonEditing_libraries})
-endif()
-
-if(NOT TARGET ITKVTKHelpers)
-  add_subdirectory(ITKVTKHelpers)
-  include_directories(${ITKVTKHelpers_includes})
-  set(BDSInpainting_includes ${BDSInpainting_includes} ${ITKVTKHelpers_includes})
-  set(BDSInpainting_libraries ${BDSInpainting_libraries} ${ITKVTKHelpers_libraries})
-endif()
-
-# Allow super-projects to use all of the includes we can use here.
-if(NOT ${CMAKE_SOURCE_DIR} STREQUAL ${CMAKE_CURRENT_SOURCE_DIR})
-  set(BDSInpainting_includes ${BDSInpainting_includes}
-      ${CMAKE_CURRENT_SOURCE_DIR} PARENT_SCOPE)
-  set(BDSInpainting_libraries ${BDSInpainting_libraries} PARENT_SCOPE)
-endif()
-
-# Create a library
-add_custom_target(BDSInpainting BDSInpainting.hpp)
+# Add non-compiled files to the project
+add_custom_target(BDSInpainting SOURCES
+BDSInpainting.h
+BDSInpainting.hpp
+BDSInpaintingMultiRes.h
+BDSInpaintingMultiRes.hpp
+BDSInpaintingRings.h
+BDSInpaintingRings.hpp
+Compositor.h
+Compositor.hpp
+InpaintingAlgorithm.h
+InpaintingAlgorithm.hpp
+PixelCompositors.h)
 
 SET(BDSInpainting_BuildDrivers ON CACHE BOOL "Build BDSInpainting drivers?")
 if(BDSInpainting_BuildDrivers)
@@ -62,6 +78,3 @@ endif()
 #if(BDSInpainting_BuildTests)
 # add_subdirectory(Tests)
 #endif()
-
-GET_DIRECTORY_PROPERTY(AllBDSInpaintingIncludes INCLUDE_DIRECTORIES)
-#message("BDSInpainting include directories: ${AllBDSInpaintingIncludes}")

@@ -29,6 +29,7 @@
 #include <Mask/Mask.h>
 
 #include <PatchMatch/PatchMatchHelpers.h>
+#include <PatchMatch/NNField.h>
 
 class CompositorParent
 {
@@ -46,7 +47,7 @@ public:
   Compositor();
 
   /** Set the nearest neighbor field to use. */
-  void SetNearestNeighborField(PatchMatchHelpers::NNFieldType* const nnField);
+  void SetNearestNeighborField(NNFieldType* const nnField);
 
   /** Get the resulting inpainted image. */
   TImage* GetOutput();
@@ -78,7 +79,7 @@ protected:
   Mask::Pointer TargetMask;
 
   /** The nearest neighbor field to use. */
-  PatchMatchHelpers::NNFieldType* NearestNeighborField;
+  NNFieldType* NearestNeighborField;
 };
 
 #include "Compositor.hpp"

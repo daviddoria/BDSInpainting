@@ -28,10 +28,7 @@
 
 #include <PatchMatch/PatchMatch.h>
 #include <PatchMatch/PatchMatchHelpers.h>
-#include <PatchMatch/InitializerKnownRegion.h>
-#include <PatchMatch/InitializerRandom.h>
-#include <PatchMatch/AcceptanceTestNeighborHistogram.h>
-#include <PatchMatch/PropagatorForwardBackward.h>
+#include <PatchMatch/Propagator.h>
 
 #include <PatchComparison/SSD.h>
 
@@ -65,8 +62,8 @@ void BDSInpainting<TImage>::Inpaint(TPatchMatchFunctor* const patchMatchFunctor,
   itk::ImageRegion<2> fullRegion = this->Image->GetLargestPossibleRegion();
 
   // Allocate the initial NNField
-  PatchMatchHelpers::NNFieldType::Pointer nnField =
-    PatchMatchHelpers::NNFieldType::New();
+  NNFieldType::Pointer nnField =
+    NNFieldType::New();
   nnField->SetRegions(currentImage->GetLargestPossibleRegion());
   nnField->Allocate();
 
@@ -74,13 +71,6 @@ void BDSInpainting<TImage>::Inpaint(TPatchMatchFunctor* const patchMatchFunctor,
   typedef SSD<TImage> PatchDistanceFunctorType;
   PatchDistanceFunctorType patchDistanceFunctor;
   patchDistanceFunctor.SetImage(currentImage);
-
-  // Initialize the NNField in the known region
-  InitializerKnownRegion initializerKnownRegion;
-  initializerKnownRegion.SetSourceMask(this->SourceMask);
-  initializerKnownRegion.SetPatchRadius(this->PatchRadius);
-  initializerKnownRegion.Initialize(nnField);
-
 
   //////////////////// The things in this block should probably be passed into this class
   // Set acceptance test to histogram threshold
@@ -90,31 +80,16 @@ void BDSInpainting<TImage>::Inpaint(TPatchMatchFunctor* const patchMatchFunctor,
   ITKHelpers::ITKImageToHSVImage(currentImage.GetPointer(), hsvImage.GetPointer());
   ITKHelpers::WriteImage(hsvImage.GetPointer(), "HSV.mha");
 
-  typedef AcceptanceTestNeighborHistogramRatio<HSVImageType> AcceptanceTestType;
-  AcceptanceTestType acceptanceTest;
-  acceptanceTest.SetImage(hsvImage);
-  acceptanceTest.SetRangeMin(0.0f);
-  acceptanceTest.SetRangeMax(1.0f);
-  acceptanceTest.SetPatchRadius(this->PatchRadius);
-  acceptanceTest.SetMaxNeighborHistogramRatio(2.0f);
-
-  Process* processFunctor = new ProcessValidMaskPixels(this->TargetMask);
-
-  typedef PropagatorForwardBackward<PatchDistanceFunctorType,
-          AcceptanceTestType> PropagatorType;
+  typedef Propagator<PatchDistanceFunctorType> PropagatorType;
   PropagatorType propagationFunctor;
-  propagationFunctor.SetAcceptanceTest(&acceptanceTest);
   propagationFunctor.SetPatchDistanceFunctor(&patchDistanceFunctor);
-  propagationFunctor.SetProcessFunctor(processFunctor);
   propagationFunctor.SetPatchRadius(this->PatchRadius);
 
-  typedef RandomSearch<TImage, PatchDistanceFunctorType, AcceptanceTestType>
+  typedef RandomSearch<TImage, PatchDistanceFunctorType>
     RandomSearchType;
   RandomSearchType randomSearcher;
   randomSearcher.SetImage(this->Image);
   randomSearcher.SetPatchDistanceFunctor(&patchDistanceFunctor);
-  randomSearcher.SetProcessFunctor(processFunctor);
-  randomSearcher.SetAcceptanceTest(&acceptanceTest);
   //////////////////// The things above this block should probably be passed into this class
 
   // Setup the PatchMatch functor. Use a generic (parent class) AcceptanceTest.
@@ -125,17 +100,10 @@ void BDSInpainting<TImage>::Inpaint(TPatchMatchFunctor* const patchMatchFunctor,
     PatchMatchHelpers::WriteNNField(nnField.GetPointer(),
                                         "InitializedKnownRegionNNField.mha"); // debug only
 
-    InitializerRandom<PatchDistanceFunctorType> randomInitializer;
-    randomInitializer.SetTargetMask(this->TargetMask);
-    randomInitializer.SetSourceMask(this->SourceMask);
-    randomInitializer.SetPatchDistanceFunctor(&patchDistanceFunctor);
-    randomInitializer.SetPatchRadius(this->PatchRadius);
-    randomInitializer.Initialize(nnField);
-
     PatchMatchHelpers::WriteNNField(nnField.GetPointer(),
                                         "InitializedRandomNNField.mha"); // debug only
     // Give the PatchMatch functor the data
-    patchMatchFunctor->Compute(nnField, &propagationFunctor, &randomSearcher, processFunctor);
+    patchMatchFunctor->Compute();
 
     PatchMatchHelpers::WriteNNField(nnField.GetPointer(), "PatchMatchNNField.mha");
 

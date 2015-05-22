@@ -98,7 +98,7 @@ struct PixelCompositorBestPatch
     const std::vector<float>& contributingScores)
   {
     // Take the pixel from the best matching patch
-    unsigned int patchId = Helpers::argmin(contributingScores);
+    unsigned int patchId = Helpers::Argmin(contributingScores);
     TPixel newValue = contributingPixels[patchId];
     return newValue;
   }

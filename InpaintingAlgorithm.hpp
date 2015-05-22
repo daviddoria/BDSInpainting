@@ -26,9 +26,6 @@
 
 #include <Mask/MaskOperations.h>
 
-#include <PatchMatch/InitializerKnownRegion.h>
-#include <PatchMatch/InitializerRandom.h>
-
 #include <PatchComparison/SSD.h>
 
 // ITK
@@ -75,13 +72,13 @@ void InpaintingAlgorithm<TImage>::SetImage(TImage* const image)
 template <typename TImage>
 void InpaintingAlgorithm<TImage>::SetSourceMask(Mask* const mask)
 {
-  this->SourceMask->DeepCopyFrom(mask);
+  ITKHelpers::DeepCopy(mask, this->SourceMask.GetPointer());
 }
 
 template <typename TImage>
 void InpaintingAlgorithm<TImage>::SetTargetMask(Mask* const mask)
 {
-  this->TargetMask->DeepCopyFrom(mask);
+  ITKHelpers::DeepCopy(mask, this->TargetMask.GetPointer());
 }
 
 #endif

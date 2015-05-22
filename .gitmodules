@@ -1,9 +1,12 @@
 [submodule "PatchMatch"]
 	path = PatchMatch
-	url = https://github.com/daviddoria/PatchMatch.git
+	url = ../PatchMatch.git
 [submodule "PoissonEditing"]
 	path = PoissonEditing
-	url = https://github.com/daviddoria/PoissonEditing.git
+	url = ../PoissonEditing.git
 [submodule "ITKVTKHelpers"]
 	path = ITKVTKHelpers
-	url = https://github.com/daviddoria/ITKVTKHelpers.git
+	url = ../ITKVTKHelpers.git
+[submodule "CMakeHelpers"]
+	path = CMakeHelpers
+	url = ../CMakeHelpers.git

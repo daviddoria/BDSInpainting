@@ -28,6 +28,9 @@
 // Submodules
 #include <Mask/Mask.h>
 #include <PatchMatch/PatchMatch.h>
+#include <PatchMatch/NNField.h>
+
+// Custom
 #include <Compositor.h>
 
 /** This class provides an interface which accepts and stores typical paramaters to an inpainting
@@ -62,7 +65,7 @@ public:
 protected:
 
   /** The nearest neighbor field that is computed and used for compositing. */
-  typename PatchMatchHelpers::NNFieldType::Pointer NNField;
+  typename NNFieldType::Pointer NNField;
 
   /** The number of iterations to run. */
   unsigned int Iterations;

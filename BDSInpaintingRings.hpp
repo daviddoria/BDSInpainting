@@ -23,11 +23,6 @@
 #include "BDSInpainting.h" // Composition
 
 // Custom
-#include "InitializerRandom.h"
-#include "InitializerKnownRegion.h"
-#include "InitializerNeighborHistogram.h"
-#include "AcceptanceTestNeighborHistogram.h"
-#include "Verifier.h"
 #include "Slots.h"
 #include "PixelCompositors.h"
 

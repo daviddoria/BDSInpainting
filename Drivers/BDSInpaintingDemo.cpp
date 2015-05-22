@@ -33,12 +33,15 @@
 #include <PatchComparison/SSD.h>
 
 #include <PatchMatch/PatchMatch.h>
-#include <PatchMatch/AcceptanceTestSSD.h>
-#include <PatchMatch/InitializerRandom.h>
+#include <PatchMatch/Propagator.h>
+#include <PatchMatch/RandomSearch.h>
+
+#include <PoissonEditing/PoissonEditingWrappers.h>
 
 // Custom
 #include "BDSInpainting.h"
 #include "Compositor.h"
+#include "PixelCompositors.h"
 
 int main(int argc, char*argv[])
 {
@@ -89,41 +92,51 @@ int main(int argc, char*argv[])
   //std::cout << "target mask has " << targetMask->CountHolePixels() << " hole pixels." << std::endl;
 
   // Poisson fill the input image
-  typedef PoissonEditing<typename TypeTraits<ImageType::PixelType>::ComponentType> PoissonEditingType;
 
-  typename PoissonEditingType::GuidanceFieldType::Pointer zeroGuidanceField =
-            PoissonEditingType::GuidanceFieldType::New();
+
+  typename PoissonEditingParent::GuidanceFieldType::Pointer zeroGuidanceField =
+            PoissonEditingParent::GuidanceFieldType::New();
   zeroGuidanceField->SetRegions(image->GetLargestPossibleRegion());
   zeroGuidanceField->Allocate();
-  typename PoissonEditingType::GuidanceFieldType::PixelType zeroPixel;
+  typename PoissonEditingParent::GuidanceFieldType::PixelType zeroPixel;
   zeroPixel.Fill(0);
   ITKHelpers::SetImageToConstant(zeroGuidanceField.GetPointer(), zeroPixel);
 
-  PoissonEditingType::FillImage(image, targetMask,
-                                zeroGuidanceField.GetPointer(), image);
+  ImageType::Pointer filledImage = ImageType::New();
 
-  ITKHelpers::WriteRGBImage(image, "PoissonFilled.png");
+  FillImage(image, targetMask, zeroGuidanceField, filledImage.GetPointer(),
+            image->GetLargestPossibleRegion());
+
+  ITKHelpers::WriteRGBImage(filledImage.GetPointer(), "PoissonFilled.png");
 
   // PatchMatch requires that the target region be specified by valid pixels
   targetMask->InvertData();
 
   // Setup the patch distance functor
-  SSD<ImageType> ssdFunctor;
-  ssdFunctor.SetImage(image);
+  typedef SSD<ImageType> PatchDistanceFunctorType;
+  PatchDistanceFunctorType* patchDistanceFunctor = new PatchDistanceFunctorType;
+  patchDistanceFunctor->SetImage(image);
 
-  AcceptanceTestSSD<ImageType> acceptanceTest;
-  acceptanceTest.SetImage(image);
-  acceptanceTest.SetPatchRadius(patchRadius);
-  
+  typedef Propagator<PatchDistanceFunctorType> PropagatorType;
+  PropagatorType* propagator = new PropagatorType;
+  propagator->SetPatchDistanceFunctor(patchDistanceFunctor);
+
+  typedef RandomSearch<ImageType, PatchDistanceFunctorType> RandomSearchType;
+  RandomSearchType* randomSearchFunctor = new RandomSearchType;
+  randomSearchFunctor->SetPatchDistanceFunctor(patchDistanceFunctor);
+  randomSearchFunctor->SetImage(image);
+  randomSearchFunctor->SetPatchRadius(patchRadius);
+
+
   // Setup the PatchMatch functor
-  PatchMatch<ImageType> patchMatchFunctor;
+  PatchMatch<ImageType, PropagatorType, RandomSearchType> patchMatchFunctor;
   patchMatchFunctor.SetPatchRadius(patchRadius);
-  patchMatchFunctor.SetPatchDistanceFunctor(&ssdFunctor);
   patchMatchFunctor.SetIterations(1);
-  patchMatchFunctor.SetAcceptanceTest(&acceptanceTest);
+  patchMatchFunctor.SetPropagationFunctor(propagator);
+  patchMatchFunctor.SetRandomSearchFunctor(randomSearchFunctor);
 
   // Test the result of PatchMatch here
-  patchMatchFunctor.SetRandom(false);
+  //patchMatchFunctor.SetRandom(false);
 
   // Here, the source match and target match are the same, specifying the classicial
   // "use pixels outside the hole to fill the pixels inside the hole".
@@ -138,12 +151,8 @@ int main(int argc, char*argv[])
   bdsInpainting.SetIterations(1);
   //bdsInpainting.SetIterations(4);
 
-  Compositor<ImageType> compositor;
-  compositor.SetCompositingMethod(Compositor<ImageType>::AVERAGE);
-  bdsInpainting.SetCompositor(&compositor);
-
-  bdsInpainting.SetPatchMatchFunctor(&patchMatchFunctor);
-  bdsInpainting.Inpaint();
+  Compositor<ImageType, PixelCompositorAverage> compositor;
+  bdsInpainting.Inpaint(&patchMatchFunctor, &compositor);
 
   ITKHelpers::WriteRGBImage(bdsInpainting.GetOutput(), outputFilename);
 

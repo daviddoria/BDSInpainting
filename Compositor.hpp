@@ -60,7 +60,7 @@ void Compositor<TImage, TPixelCompositor>::SetImage(TImage* const image)
 template <typename TImage, typename TPixelCompositor>
 void Compositor<TImage, TPixelCompositor>::SetTargetMask(Mask* const mask)
 {
-  this->TargetMask->DeepCopyFrom(mask);
+  ITKHelpers::DeepCopy(mask, this->TargetMask.GetPointer());
 }
 
 template <typename TImage, typename TPixelCompositor>
@@ -138,10 +138,7 @@ void Compositor<TImage, TPixelCompositor>::Composite()
     {
       itk::Index<2> containingRegionCenter =
                   ITKHelpers::GetRegionCenter(patchesContainingPixel[containingPatchId]);
-      MatchSet matchSet = this->NearestNeighborField->GetPixel(containingRegionCenter);
-      assert(matchSet.GetNumberOfMatches() > 0);
-      Match bestMatch = matchSet.GetMatch(0);
-      assert(bestMatch.IsValid());
+      Match bestMatch = this->NearestNeighborField->GetPixel(containingRegionCenter);
 
       itk::ImageRegion<2> bestMatchRegion = bestMatch.GetRegion();
 
@@ -159,7 +156,7 @@ void Compositor<TImage, TPixelCompositor>::Composite()
 
       contributingPixels[containingPatchId] = this->Image->GetPixel(correspondingPixel);
 
-      contributingScores[containingPatchId] = bestMatch.GetSSDScore();
+      contributingScores[containingPatchId] = bestMatch.GetScore();
 
     } // end loop over containing patches
 
@@ -184,7 +181,7 @@ void Compositor<TImage, TPixelCompositor>::Composite()
 }
 
 template <typename TImage, typename TPixelCompositor>
-void Compositor<TImage, TPixelCompositor>::SetNearestNeighborField(PatchMatchHelpers::NNFieldType* const nnField)
+void Compositor<TImage, TPixelCompositor>::SetNearestNeighborField(NNFieldType* const nnField)
 {
   this->NearestNeighborField = nnField;
 }
