@@ -60,7 +60,7 @@ int main(int argc, char*argv[])
 
   std::string imageFilename;
   std::string maskFilename;
-  unsigned int patchRadius;
+  unsigned int patchRadius; // The PatchMatch paper experiments mostly use 7x7 patches (radius=3)
   std::string outputFilename;
 
   ss >> imageFilename >> maskFilename >> patchRadius >> outputFilename;

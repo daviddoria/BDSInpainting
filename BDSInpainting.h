@@ -46,6 +46,10 @@ public:
   template <typename TPatchMatchFunctor, typename TCompositor>
   void Inpaint(TPatchMatchFunctor* const patchMatchFunctor, TCompositor* const compositor);
 
+protected:
+  typedef itk::Image<bool, 2> BoolImageType;
+  void ConstructValidPatchCentersImage();
+  BoolImageType::Pointer ValidPatchCentersImage = BoolImageType::New();
 };
 
 #include "BDSInpainting.hpp"

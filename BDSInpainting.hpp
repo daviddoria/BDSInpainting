@@ -46,6 +46,8 @@ void BDSInpainting<TImage>::Inpaint(TPatchMatchFunctor* const patchMatchFunctor,
   assert(this->Image);
   assert(this->InpaintingMask);
 
+  ConstructValidPatchCentersImage();
+
   // Initialize the output with the input
   typename TImage::Pointer currentImage = TImage::New();
   ITKHelpers::DeepCopy(this->Image.GetPointer(), currentImage.GetPointer());
@@ -60,6 +62,12 @@ void BDSInpainting<TImage>::Inpaint(TPatchMatchFunctor* const patchMatchFunctor,
   typedef SSD<TImage> PatchDistanceFunctorType;
   PatchDistanceFunctorType patchDistanceFunctor;
   patchDistanceFunctor.SetImage(currentImage);
+
+  patchMatchFunctor->SetValidPatchCentersImage(this->ValidPatchCentersImage);
+
+  std::vector<itk::Index<2> > pixelsToProcess = this->InpaintingMask->GetHolePixels();
+  patchMatchFunctor->SetTargetPixels(pixelsToProcess);
+  patchMatchFunctor->SetPatchRadius(this->PatchRadius);
 
   patchMatchFunctor->GetPropagationFunctor()->SetPatchDistanceFunctor(&patchDistanceFunctor);
   patchMatchFunctor->GetPropagationFunctor()->SetPatchRadius(this->PatchRadius);
@@ -88,6 +96,35 @@ void BDSInpainting<TImage>::Inpaint(TPatchMatchFunctor* const patchMatchFunctor,
   }
 
   ITKHelpers::DeepCopy(currentImage.GetPointer(), this->Output.GetPointer());
+}
+
+template <typename TImage>
+void BDSInpainting<TImage>::ConstructValidPatchCentersImage()
+{
+    this->ValidPatchCentersImage->SetRegions(this->Image->GetLargestPossibleRegion());
+    this->ValidPatchCentersImage->Allocate();
+
+    ITKHelpers::SetImageToConstant(this->ValidPatchCentersImage.GetPointer(), false);
+
+    itk::ImageRegion<2> internalRegion = ITKHelpers::GetInternalRegion(this->InpaintingMask->GetLargestPossibleRegion(),
+                                              this->PatchRadius);
+
+//    itk::ImageRegionIteratorWithIndex<Mask> maskIterator(this->InpaintingMask.GetPointer(), internalRegion);
+    itk::ImageRegionIteratorWithIndex<BoolImageType> iterator(this->ValidPatchCentersImage.GetPointer(), internalRegion);
+
+    while(!iterator.IsAtEnd())
+    {
+      itk::ImageRegion<2> targetRegion = ITKHelpers::GetRegionInRadiusAroundPixel(iterator.GetIndex(), this->PatchRadius);
+
+      if(this->InpaintingMask->IsValid(targetRegion))
+      {
+          iterator.Set(true);
+      }
+
+      ++iterator;
+    }
+
+    ITKHelpers::WriteBoolImage(this->ValidPatchCentersImage.GetPointer(), "ValidPatchCentersImage.png");
 }
 
 #endif

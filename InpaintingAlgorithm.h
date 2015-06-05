@@ -34,7 +34,14 @@
 #include <Compositor.h>
 
 /** This class provides an interface which accepts and stores typical paramaters to an inpainting
-  * algorithm (masks, image, patch radius, etc). */
+  * algorithm (masks, image, patch radius, etc).
+
+From this:
+http://perso.telecom-paristech.fr/~gousseau/video_inpainting/Video_inpainting_complex_scenes.pdf
+
+the idea is to use "the set of unoccluded pixels whose neighborhood is also unoccluded" as source patches for the inpainting.
+*/
+
 template <typename TImage>
 class InpaintingAlgorithm
 {
